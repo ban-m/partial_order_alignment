@@ -6,9 +6,9 @@ pub struct Profile {
     pub ins: f64,
 }
 pub const PROFILE: Profile = Profile {
-    sub: 0.03,
-    del: 0.05,
-    ins: 0.06,
+    sub: 0.04,
+    del: 0.04,
+    ins: 0.07,
 };
 
 #[derive(Debug, Clone, Copy)]

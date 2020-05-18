@@ -10,14 +10,14 @@ pub const BADREAD_CONFIG: Config = Config {
 };
 
 pub const DEFAULT_CONFIG: Config = Config {
-    mismatch: 0.03,
+    mismatch: 0.04,
     base_freq: [0.25, 0.25, 0.25, 0.25],
-    p_match: 0.89,
-    p_ins: 0.06,
-    p_del: 0.05,
-    p_extend_ins: 0.06,
-    p_extend_del: 0.05,
-    p_del_to_ins: 0.06,
+    p_match: 0.85,
+    p_ins: 0.07,
+    p_del: 0.04,
+    p_extend_ins: 0.08,
+    p_extend_del: 0.07,
+    p_del_to_ins: 0.08,
 };
 
 pub const STRICT_CONFIG: Config = Config {
