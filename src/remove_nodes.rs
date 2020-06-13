@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 impl crate::PartialOrderAlignment {
     pub fn remove_node(mut self, thr: f64) -> Self {
+        //debug!("Removing...{}", self.nodes.len());
         if self.nodes.len() < 2 {
             panic!("Invalid input:{}", self);
         }

@@ -1,4 +1,6 @@
 #![feature(test)]
+#[allow(unused_imports)]
+#[macro_use]
 extern crate log;
 extern crate packed_simd;
 extern crate rand;
@@ -155,6 +157,42 @@ impl PartialOrderAlignment {
                 }
             })
             .remove_node(THR)
+            .finalize()
+    }
+    pub fn update_thr<F: Fn(u8, u8) -> i32>(
+        self,
+        seqs: &[&[u8]],
+        params: (i32, i32, &F),
+        s: u64,
+        thr: f64,
+        coef: f64,
+    ) -> POA {
+        let mut rng: Xoshiro256StarStar = SeedableRng::seed_from_u64(s);
+        if seqs.is_empty() {
+            return self;
+        }
+        let max_len = seqs.iter().map(|s| s.len()).max().unwrap_or(0);
+        let node_num_thr = (max_len as f64 * coef).floor() as usize;
+        let poa = rand::seq::index::sample(&mut rng, seqs.len(), seqs.len())
+            .into_iter()
+            .map(|idx| &seqs[idx])
+            .fold(self, |x, y| {
+                if x.nodes.len() > node_num_thr {
+                    x.add(y, 1., params).remove_node(thr)
+                } else {
+                    x.add(y, 1., params)
+                }
+            });
+        poa.remove_node(thr).finalize()
+    }
+    pub fn generate_no_trim<F>(seqs: &[&[u8]], param: (i32, i32, &F), s: u64) -> POA
+    where
+        F: Fn(u8, u8) -> i32,
+    {
+        use rand::seq::SliceRandom;
+        let mut rng: Xoshiro256StarStar = SeedableRng::seed_from_u64(s);
+        seqs.choose_multiple(&mut rng, seqs.len())
+            .fold(POA::default(), |x, y| x.add(y, 1., param))
             .finalize()
     }
     pub fn generate_uniform(seqs: &[&[u8]]) -> POA {
