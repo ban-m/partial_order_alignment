@@ -107,6 +107,86 @@ fn deletion_test() {
 }
 
 #[test]
+fn insertion_test_banded() {
+    let seed = b"ACGTAGCTGATCGTAC";
+    let seq2 = b"ACGTAGCTGATTTCGTAC";
+    let res = POA::new(seed, 1.).add_default_banded(seq2, 5);
+    assert_eq!(res.nodes.len(), seed.len() + 2);
+    let seed = b"ACGTAGCTGATCGTAC";
+    let seq2 = b"ACGTAGCTGATTTCGTAC";
+    let res = POA::new(seed, 1.).add_default_banded(seq2, 5);
+    assert_eq!(res.nodes.len(), seed.len() + 2);
+    let seed = b"ACGTAGCTGATCGTAC";
+    let seq2 = b"ACGTAGCTGATCGTAC";
+    let res = POA::new(seed, 1.).add_default_banded(seq2, 5);
+    assert_eq!(res.nodes.len(), seed.len());
+    let seed = b"ACGTAGCTGATCGTAC";
+    let seq2 = b"ACGTAGCTGATCGTACG";
+    let res = POA::new(seed, 1.).add_default_banded(seq2, 5);
+    assert_eq!(res.nodes.len(), seed.len() + 1);
+    let seq2 = b"ACGTAGCTGATCGTAC";
+    let seed = b"AACGTAGCTGATCGTAC";
+    let res = POA::new(seed, 1.).add_default_banded(seq2, 5);
+    assert_eq!(res.nodes.len(), seed.len());
+    let seed = b"ACGTAGCTGATCGTAC";
+    let seq2 = b"AAACGTAGCTGATCGTAC";
+    let res = POA::new(seed, 1.).add_default_banded(seq2, 5);
+    assert_eq!(res.nodes.len(), seed.len() + 2);
+}
+
+#[test]
+fn mismatch_test_banded() {
+    let seed = b"ACGTAGCTGATCGTAC";
+    let seq2 = b"ACGTAGCTGATCGGAC";
+    let res = POA::new(seed, 1.).add_default_banded(seq2, 5);
+    assert_eq!(res.nodes.len(), seed.len() + 1);
+    let seed = b"ACGTAGCTGATCGTAC";
+    let seq2 = b"ACGTAGCTGATCGTCC";
+    let res = POA::new(seed, 1.).add_default_banded(seq2, 5);
+    assert_eq!(res.nodes.len(), seed.len() + 1);
+    let seed = b"ACGTAGCTGAGTAC";
+    let seq2 = b"ACGAGCTGATCTAC";
+    let res = POA::new(seed, 1.).add_default_banded(seq2, 5);
+    assert_eq!(res.nodes.len(), seed.len() + 2);
+    let seed = b"ACGTAGCTGATCGTAC";
+    let seq2 = b"CCGTAGCTGATCGTAC";
+    let res = POA::new(seed, 1.).add_default_banded(seq2, 5);
+    assert_eq!(res.nodes.len(), seed.len() + 1);
+    let seed = b"ACGTAGCTGATCGTAC";
+    let seq2 = b"ACGTAGCTGATCGTAG";
+    let res = POA::new(seed, 1.).add_default_banded(seq2, 5);
+    assert_eq!(res.nodes.len(), seed.len() + 1);
+}
+#[test]
+fn deletion_test_banded() {
+    let seed = b"ACGTAGCTGATCGTAC";
+    let seq2 = b"ACGTAGCTGTCGTAC";
+    let res = POA::new(seed, 1.).add_default_banded(seq2, 5);
+    assert_eq!(res.nodes.len(), seed.len());
+    assert_eq!(res.num_edges(), seed.len());
+    let seed = b"ACGTAGCTGATCGTAC";
+    let seq2 = b"ACGAGCTGATCGTAC";
+    let res = POA::new(seed, 1.).add_default_banded(seq2, 5);
+    assert_eq!(res.nodes.len(), seed.len());
+    assert_eq!(res.num_edges(), seed.len());
+    let seed = b"ACGTAGCTGATCGTAC";
+    let seq2 = b"ACGAGCTGATCTAC";
+    let res = POA::new(seed, 1.).add_default_banded(seq2, 5);
+    assert_eq!(res.nodes.len(), seed.len());
+    assert_eq!(res.num_edges(), seed.len() + 1);
+    let seed = b"ACGTAGCTGATCGTAC";
+    let seq2 = b"ACGTAGCTGATCGTA";
+    let res = POA::new(seed, 1.).add_default_banded(seq2, 5);
+    assert_eq!(res.nodes.len(), seed.len());
+    assert_eq!(res.num_edges(), seed.len() - 1);
+    let seed = b"ACGTAGCTGATCGTAC";
+    let seq2 = b"CGTAGCTGATCGTAC";
+    let res = POA::new(seed, 1.).add_default_banded(seq2, 5);
+    assert_eq!(res.nodes.len(), seed.len());
+    assert_eq!(res.num_edges(), seed.len() - 1);
+}
+
+#[test]
 fn merge_test() {
     let seq1 = b"ACAAT";
     let seq2 = b"ATGCT";
@@ -170,7 +250,6 @@ fn forward() {
     assert!(lk < 0.);
 }
 
-
 #[test]
 fn connectivity_check() {
     let bases = b"ACTG";
@@ -222,9 +301,6 @@ where
     for i in 0..xs.len() {
         dp[i + 1][0] = ins * (i + 1) as f64;
     }
-    // for j in 0..ys.len() {
-    //     dp[0][j + 1] = del * (j + 1) as f64;
-    // }
     for i in 0..xs.len() {
         for j in 0..ys.len() {
             dp[i + 1][j + 1] = (dp[i][j] + score(xs[i], ys[j]))
@@ -232,10 +308,6 @@ where
                 .max(dp[i][j + 1] + ins);
         }
     }
-    // for line in &dp {
-    //     let line: Vec<_> = line.iter().map(|x| format!("{:4.0}", x)).collect();
-    // eprintln!("{}", line.join(" "));
-    //}
     *dp[xs.len()]
         .iter()
         .max_by(|a, b| a.partial_cmp(&b).unwrap())
@@ -440,7 +512,6 @@ fn mix_test_prior() {
     }
 }
 
-
 #[ignore]
 #[test]
 fn abundance_test_prior() {
@@ -510,7 +581,6 @@ fn abundance_test_prior() {
     }
 }
 
-
 use rand::Rng;
 #[ignore]
 #[test]
@@ -523,8 +593,7 @@ fn single_error_test() {
     let results: Vec<_> = (start..coverage)
         .step_by(step)
         .map(|cov| {
-            let mut rng: Xoshiro256StarStar = SeedableRng::seed_from_u64(1_234_567);
-            let seed = rng.gen_range(0, 100_000);
+            let seed = cov as u64 * 11;
             let mut rng: Xoshiro256StarStar = SeedableRng::seed_from_u64(seed);
             let template1: Vec<_> = (0..len)
                 .filter_map(|_| bases.choose(&mut rng))
@@ -593,6 +662,86 @@ fn check<R: rand::Rng>(t1: &[u8], t2: &[u8], rng: &mut R, cov: usize) -> usize {
     correct
 }
 
+#[ignore]
+#[test]
+fn single_error_ccs_test() {
+    let bases = b"ACTG";
+    let coverage = 150;
+    let start = 20;
+    let step = 3;
+    let len = 150;
+    let results: Vec<_> = (start..coverage)
+        .step_by(step)
+        .map(|cov| {
+            let seed = cov as u64 * 11;
+            let mut rng: Xoshiro256StarStar = SeedableRng::seed_from_u64(seed);
+            let template1: Vec<_> = (0..len)
+                .filter_map(|_| bases.choose(&mut rng))
+                .copied()
+                .collect();
+            let template2 = introduce_errors(&template1, &mut rng, 1, 0, 0);
+            let sub = check_ccs(&template1, &template2, &mut rng, cov);
+            let template2 = introduce_errors(&template1, &mut rng, 0, 1, 0);
+            let del = check_ccs(&template1, &template2, &mut rng, cov);
+            let template2 = introduce_errors(&template1, &mut rng, 0, 0, 1);
+            let ins = check_ccs(&template1, &template2, &mut rng, cov);
+            (cov, (sub, del, ins))
+        })
+        .collect();
+    let (sub, del, ins) = results
+        .iter()
+        .fold((0, 0, 0), |(x, y, z), &(_, (a, b, c))| {
+            (x + a, y + b, z + c)
+        });
+    for (cov, res) in results {
+        eprintln!("Cov:{},Sub:{},Del:{},Ins:{}", cov, res.0, res.1, res.2);
+    }
+    eprintln!("Tot:{}", (start..coverage).step_by(step).count() * 100);
+    eprintln!("Sub:{},Del:{},Ins:{}", sub, del, ins);
+    assert!(false);
+}
+
+fn check_ccs<R: rand::Rng>(t1: &[u8], t2: &[u8], rng: &mut R, cov: usize) -> usize {
+    let model1: Vec<_> = (0..cov)
+        .map(|_| introduce_randomness(&t1, rng, &CCS_PROFILE))
+        .collect();
+    let model2: Vec<_> = (0..cov)
+        .map(|_| introduce_randomness(&t2, rng, &CCS_PROFILE))
+        .collect();
+    let seqs: Vec<_> = model1
+        .iter()
+        .chain(model2.iter())
+        .map(|e| e.as_slice())
+        .collect();
+    let score = |x, y| if x == y { 3 } else { -4 };
+    let parameters = (-6, -6, &score);
+    let weight1 = vec![vec![1.; cov], vec![0.; cov]].concat();
+    let weight2 = vec![vec![0.; cov], vec![1.; cov]].concat();
+    let m1 = POA::generate(&seqs, &weight1, parameters);
+    let m2 = POA::generate(&seqs, &weight2, parameters);
+    eprintln!("{}\t{}\t{}", cov, m1, m2);
+    let tests: Vec<_> = (0..100)
+        .map(|e| {
+            if e % 2 == 0 {
+                (e, introduce_randomness(&t1, rng, &CCS_PROFILE))
+            } else {
+                (e, introduce_randomness(&t2, rng, &CCS_PROFILE))
+            }
+        })
+        .collect();
+    let correct = tests
+        .par_iter()
+        .filter(|(e, q)| {
+            if e % 2 == 0 {
+                m1.forward(&q, &DEFAULT_CONFIG) > m2.forward(&q, &DEFAULT_CONFIG)
+            } else {
+                m1.forward(&q, &DEFAULT_CONFIG) < m2.forward(&q, &DEFAULT_CONFIG)
+            }
+        })
+        .count();
+    correct
+}
+
 #[test]
 fn low_coverage_test() {
     let mut rng: Xoshiro256StarStar = SeedableRng::seed_from_u64(121212);
@@ -622,7 +771,6 @@ fn low_coverage_test() {
         let likelihood1 = model1.forward(&test1, &DEFAULT_CONFIG);
         let likelihood2 = model2.forward(&test1, &DEFAULT_CONFIG);
         assert!(likelihood1 > likelihood2, "{},{}", likelihood1, likelihood2);
-
     }
     {
         let likelihood1 = model1.forward(&test2, &DEFAULT_CONFIG);
@@ -670,4 +818,80 @@ fn high_coverage_test() {
         assert!(likelihood1 < likelihood2, "{},{}", likelihood1, likelihood2);
         eprintln!("2:{:.4}\t{:.4}", likelihood1, likelihood2);
     }
+}
+
+#[ignore]
+#[test]
+fn single_error_banded_test() {
+    let bases = b"ACTG";
+    let coverage = 150;
+    let start = 20;
+    let step = 3;
+    let len = 150;
+    let results: Vec<_> = (start..coverage)
+        .step_by(step)
+        .map(|cov| {
+            let mut rng: Xoshiro256StarStar = SeedableRng::seed_from_u64(1_234_567);
+            let seed = rng.gen_range(0, 100_000);
+            let mut rng: Xoshiro256StarStar = SeedableRng::seed_from_u64(seed);
+            let template1: Vec<_> = (0..len)
+                .filter_map(|_| bases.choose(&mut rng))
+                .copied()
+                .collect();
+            let template2 = introduce_errors(&template1, &mut rng, 1, 0, 0);
+            let sub = check_banded(&template1, &template2, &mut rng, cov);
+            let template2 = introduce_errors(&template1, &mut rng, 0, 1, 0);
+            let del = check_banded(&template1, &template2, &mut rng, cov);
+            let template2 = introduce_errors(&template1, &mut rng, 0, 0, 1);
+            let ins = check_banded(&template1, &template2, &mut rng, cov);
+            (cov, (sub, del, ins))
+        })
+        .collect();
+    let (sub, del, ins) = results
+        .iter()
+        .fold((0, 0, 0), |(x, y, z), &(_, (a, b, c))| {
+            (x + a, y + b, z + c)
+        });
+    for (cov, res) in results {
+        eprintln!("Cov:{},Sub:{},Del:{},Ins:{}", cov, res.0, res.1, res.2);
+    }
+    eprintln!("Tot:{}", (start..coverage).step_by(step).count() * 100);
+    eprintln!("Sub:{},Del:{},Ins:{}", sub, del, ins);
+    assert!(false);
+}
+
+fn check_banded<R: rand::Rng>(t1: &[u8], t2: &[u8], rng: &mut R, cov: usize) -> usize {
+    let model1: Vec<_> = (0..cov)
+        .map(|_| introduce_randomness(&t1, rng, &CCS_PROFILE))
+        .collect();
+    let model2: Vec<_> = (0..cov)
+        .map(|_| introduce_randomness(&t2, rng, &CCS_PROFILE))
+        .collect();
+    let score = |x, y| if x == y { 3 } else { -4 };
+    let parameters = (-6, -6, &score);
+    let seqs: Vec<_> = model1.iter().map(|e| e.as_slice()).collect();
+    let m1 = POA::generate_banded(&seqs, parameters, 10, 1010);
+    let seqs: Vec<_> = model2.iter().map(|e| e.as_slice()).collect();
+    let m2 = POA::generate_banded(&seqs, parameters, 10, 1010);
+    eprintln!("{}\t{}\t{}", cov, m1, m2);
+    let tests: Vec<_> = (0..100)
+        .map(|e| {
+            if e % 2 == 0 {
+                (e, introduce_randomness(&t1, rng, &CCS_PROFILE))
+            } else {
+                (e, introduce_randomness(&t2, rng, &CCS_PROFILE))
+            }
+        })
+        .collect();
+    let correct = tests
+        .par_iter()
+        .filter(|(e, q)| {
+            if e % 2 == 0 {
+                m1.forward(&q, &DEFAULT_CONFIG) > m2.forward(&q, &DEFAULT_CONFIG)
+            } else {
+                m1.forward(&q, &DEFAULT_CONFIG) < m2.forward(&q, &DEFAULT_CONFIG)
+            }
+        })
+        .count();
+    correct
 }

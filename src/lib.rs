@@ -123,6 +123,29 @@ impl PartialOrderAlignment {
         let seed = 99_999_111 * ((ws.iter().sum::<f64>().floor()) as u64);
         Self::default().update(seqs, ws, parameters, seed)
     }
+    pub fn generate_banded<F>(seqs: &[&[u8]], ps: (i32, i32, &F), d: usize, s: u64) -> POA
+    where
+        F: Fn(u8, u8) -> i32,
+    {
+        let mut rng: Xoshiro256StarStar = SeedableRng::seed_from_u64(s);
+        if seqs.is_empty() {
+            return Self::default();
+        }
+        let max_len = seqs.iter().map(|s| s.len()).max().unwrap_or(0);
+        let node_num_thr = (max_len as f64 * 1.05).floor() as usize;
+        rand::seq::index::sample(&mut rng, seqs.len(), seqs.len())
+            .into_iter()
+            .map(|idx| &seqs[idx])
+            .fold(Self::default(), |x, y| {
+                if x.nodes.len() > node_num_thr {
+                    x.add_banded(y, ps, d).remove_node(0.3)
+                } else {
+                    x.add_banded(y, ps, d)
+                }
+            })
+            .remove_node(0.3)
+            .finalize()
+    }
     pub fn update_auto<F>(self, seqs: &[&[u8]], ws: &[f64], params: (i32, i32, &F)) -> POA
     where
         F: Fn(u8, u8) -> i32,
@@ -239,6 +262,236 @@ impl PartialOrderAlignment {
     {
         let (mut dp, mut profile) = (vec![], vec![]);
         self.align_with_buf(seq, param, (&mut dp, &mut profile))
+    }
+    pub fn align_banded<F>(
+        &self,
+        seq: &[u8],
+        (ins, del, score): (i32, i32, F),
+        d: usize,
+    ) -> (i32, TraceBack)
+    where
+        F: Fn(u8, u8) -> i32 + Clone,
+    {
+        let edges: Vec<Vec<_>> = self
+            .reverse_edges()
+            .iter()
+            .map(|edges| {
+                if !edges.is_empty() {
+                    edges.iter().map(|&p| p + 1).collect()
+                } else {
+                    vec![0]
+                }
+            })
+            .collect();
+        // Search for the starting node. use the first `d` rows to determine the starting point.
+        let starting_node = {
+            let seq = &seq[..d];
+            let (_, tb) = self.align(seq, (ins, del, score.clone()));
+            tb.into_iter()
+                .take_while(|e| match &e {
+                    EditOp::Match(_) => false,
+                    _ => true,
+                })
+                .map(|e| match &e {
+                    EditOp::Deletion(_) => 1,
+                    _ => 0,
+                })
+                .sum::<usize>()
+        };
+        // Select V_0, V_1, ..., V_{seq.len()}.
+        let init = self.select_radius_d(starting_node, (d / 2).max(1));
+        // TODO: Remove `next.sort();next.dedup()` somehow.
+        let (last, mut filled): (Vec<_>, Vec<_>) =
+            (1..seq.len()).fold((init.clone(), vec![]), |(prev, mut acc), _| {
+                let mut next: Vec<_> = prev
+                    .iter()
+                    .flat_map(|&n| self.nodes[n].edges())
+                    .copied()
+                    .collect();
+                next.sort();
+                next.dedup();
+                if next.len() < d {
+                    next.extend(prev.clone());
+                }
+                next.sort();
+                next.dedup();
+                acc.push(prev);
+                (next, acc)
+            });
+        filled.push(last);
+        // Initialize large DP table. It requires O(mn) actually.
+        // -----> query position ---->
+        // 0 8 8 8 88 8 8 8 88
+        // 0
+        // 0
+        // |
+        // |
+        // Graph position
+        // |
+        // v
+        let (column, row) = (seq.len() + 1, self.nodes.len() + 1);
+        let mut route_weight = vec![0; column * row];
+        let small = -100000;
+        let mut dp = vec![small; column * row];
+        for j in 0..column {
+            dp[j] = ins * j as i32;
+            route_weight[j] = j as u32;
+        }
+        for i in 0..row {
+            dp[i * column] = 0;
+        }
+        // Filling  DP matrix sparsely.
+        for (q, nodes) in filled.iter().enumerate() {
+            // eprintln!("{}\t{:?}", q, nodes);
+            for &g in nodes.iter() {
+                let pos = (g + 1) * column + (q + 1);
+                let insertion = dp[pos - 1] + ins;
+                let ins_weight = route_weight[pos - 1] + 1;
+                if insertion >= dp[pos] {
+                    dp[pos] = insertion;
+                    route_weight[pos] = ins_weight;
+                }
+                for &prev in edges[g].iter() {
+                    let prev_pos = prev * column + (q + 1);
+                    let deletion = dp[prev_pos] + del;
+                    let del_weight = route_weight[prev_pos];
+                    if deletion > dp[pos] {
+                        dp[pos] = deletion;
+                        route_weight[pos] = del_weight;
+                    } else if deletion == dp[pos] {
+                        route_weight[pos] = route_weight[pos].max(del_weight);
+                    }
+                    let mat_s = score(seq[q], self.nodes[g].base());
+                    let mat_s = dp[prev_pos - 1] + mat_s;
+                    let mat_weight = route_weight[prev_pos - 1] + 1;
+                    if mat_s > dp[pos] {
+                        dp[pos] = mat_s;
+                        route_weight[pos] = mat_weight;
+                    } else if mat_s == dp[pos] {
+                        route_weight[pos] = route_weight[pos].max(mat_weight);
+                    }
+                }
+            }
+        }
+        // for chunk in dp.chunks(column) {
+        //     let line: Vec<_> = chunk
+        //         .iter()
+        //         .map(|&x| {
+        //             if x == small {
+        //                 format!("!!!",)
+        //             } else {
+        //                 format!("{:3}", x)
+        //             }
+        //         })
+        //         .collect();
+        //     eprintln!("{}", line.join(","));
+        // }
+        // for chunk in route_weight.chunks(column) {
+        //     let line: Vec<_> = chunk.iter().map(|&x| format!("{:3}", x)).collect();
+        //     eprintln!("{}", line.join(","));
+        // }
+        // Traceback.
+        let mut q_pos = seq.len();
+        let (mut g_pos, opt_score) = (0..row)
+            .map(|r| dp[r * column + column - 1])
+            .enumerate()
+            .max_by(|(a_i, a), (b_i, b)| match a.cmp(&b) {
+                std::cmp::Ordering::Equal => a_i.cmp(&b_i),
+                x => x,
+            })
+            .unwrap_or_else(|| panic!("{}", line!()));
+        assert_eq!(dp[g_pos * column + q_pos], opt_score);
+        let mut operations = vec![];
+        'outer: while q_pos > 0 && g_pos > 0 {
+            // Current score
+            let c_score = dp[g_pos * column + q_pos];
+            let weight = route_weight[g_pos * column + q_pos];
+            // eprintln!("({},{})\t{}\t{}", g_pos, q_pos, c_score, weight);
+            // eprintln!(
+            //     "{}\t{}",
+            //     seq[q_pos - 1] as char,
+            //     self.nodes[g_pos - 1].base() as char
+            // );
+            // Deletion.
+            for &p in edges[g_pos - 1].iter() {
+                let pos = p * column + q_pos;
+                let (del, del_w) = (dp[pos] + del, route_weight[pos]);
+                if del == c_score && del_w == weight {
+                    operations.push(EditOp::Deletion(g_pos - 1));
+                    g_pos = p;
+                    continue 'outer;
+                }
+                let mat = dp[pos - 1] + score(seq[q_pos - 1], self.nodes[g_pos - 1].base());
+                let mat_w = route_weight[pos - 1] + 1;
+                if mat == c_score && mat_w == weight {
+                    operations.push(EditOp::Match(g_pos - 1));
+                    g_pos = p;
+                    q_pos -= 1;
+                    continue 'outer;
+                }
+            }
+            // Insertion
+            let ins = dp[g_pos * column + q_pos - 1] + ins;
+            let ins_w = route_weight[g_pos * column + q_pos - 1] + 1;
+            if ins == c_score && ins_w == weight {
+                q_pos -= 1;
+                operations.push(EditOp::Insertion(0));
+                continue 'outer;
+            }
+            panic!("error. none of choices match the current trace table.");
+        }
+        while q_pos > 0 {
+            operations.push(EditOp::Insertion(0));
+            q_pos -= 1;
+        }
+        operations.reverse();
+        (opt_score, operations)
+    }
+    // Return all the node within `d`-hop from `start` node in the sorted order.
+    // Note that we treat the POA as an undirected graph by neglecting the directions of edges.
+    fn select_radius_d(&self, start: usize, d: usize) -> Vec<usize> {
+        let mut stack = vec![];
+        let mut dist_from_start = vec![d + 2; self.nodes.len()];
+        let graph = {
+            let mut graph = vec![vec![]; self.nodes.len()];
+            for (from, node) in self.nodes.iter().enumerate() {
+                for &to in node.edges.iter() {
+                    graph[from].push(to);
+                    graph[to].push(from);
+                }
+            }
+            graph
+        };
+        let mut collected = vec![];
+        dist_from_start[start] = 0;
+        let mut dist = 0;
+        stack.push(start);
+        'dfs: while !stack.is_empty() {
+            let node = *stack.last().unwrap();
+            dist_from_start[node] = dist;
+            if dist < d {
+                for &to in graph[node].iter() {
+                    if dist + 1 < dist_from_start[to] {
+                        stack.push(to);
+                        dist += 1;
+                        continue 'dfs;
+                    }
+                }
+            }
+            let last = stack.pop().unwrap();
+            if dist <= d {
+                collected.push(last);
+            }
+            if last != start {
+                assert!(dist >= 1);
+                dist -= 1;
+            }
+        }
+        assert_eq!(dist, 0);
+        collected.sort();
+        collected.dedup();
+        assert!(collected.contains(&start));
+        collected
     }
     pub fn align_with_buf<F>(
         &self,
@@ -361,7 +614,7 @@ impl PartialOrderAlignment {
         let (mut g_pos, &score) = last_elements
             .iter()
             .enumerate()
-            .max_by(|(a_i, a), (b_i, b)| match a.partial_cmp(&b).unwrap() {
+            .max_by(|(a_i, a), (b_i, b)| match a.cmp(&b) {
                 std::cmp::Ordering::Equal => a_i.cmp(&b_i),
                 x => x,
             })
@@ -411,8 +664,22 @@ impl PartialOrderAlignment {
         operations.reverse();
         (score, operations)
     }
+    pub fn add_default_banded(self, seq: &[u8], d: usize) -> Self {
+        self.add_banded(seq, (-2, -2, &|x, y| if x == y { 1 } else { -1 }), d)
+    }
     pub fn add_default(self, seq: &[u8], w: f64) -> Self {
         self.add(seq, w, (-2, -2, &|x, y| if x == y { 1 } else { -1 }))
+    }
+    pub fn add_banded<F>(self, seq: &[u8], ps: (i32, i32, &F), d: usize) -> Self
+    where
+        F: Fn(u8, u8) -> i32,
+    {
+        if self.weight < SMALL || self.nodes.is_empty() {
+            return Self::new(seq, 1.);
+        }
+        let (_, traceback) = self.align_banded(seq, ps, d);
+        //eprintln!("{:?}", traceback);
+        self.integrate_alignment(seq, 1., traceback)
     }
     pub fn add<F>(self, seq: &[u8], w: f64, parameters: (i32, i32, &F)) -> Self
     where

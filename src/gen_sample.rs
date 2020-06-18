@@ -11,6 +11,12 @@ pub const PROFILE: Profile = Profile {
     ins: 0.07,
 };
 
+pub const CCS_PROFILE: Profile = Profile {
+    sub: 0.002,
+    del: 0.004,
+    ins: 0.004,
+};
+
 #[derive(Debug, Clone, Copy)]
 enum Op {
     Match,
