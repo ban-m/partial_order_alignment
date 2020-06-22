@@ -261,7 +261,15 @@ impl PartialOrderAlignment {
         F: Fn(u8, u8) -> i32,
     {
         let (mut dp, mut profile) = (vec![], vec![]);
-        self.align_with_buf(seq, param, (&mut dp, &mut profile))
+        let mut edges = self.reverse_edges();
+        edges.iter_mut().for_each(|eds| {
+            if !eds.is_empty() {
+                eds.iter_mut().for_each(|p| *p += 1);
+            } else {
+                eds.push(0);
+            }
+        });
+        self.align_with_buf(seq, param, (&mut dp, &mut profile), &edges)
     }
     pub fn align_banded<F>(
         &self,
@@ -273,40 +281,33 @@ impl PartialOrderAlignment {
         F: Fn(u8, u8) -> i32 + Clone,
     {
         // Search for the starting node. use the first `d` rows to determine the starting point.
-        let starting_node = {
+        let edges: Vec<Vec<_>> = {
+            let mut edges = self.reverse_edges();
+            edges.iter_mut().for_each(|eds| {
+                if !eds.is_empty() {
+                    eds.iter_mut().for_each(|p| *p += 1);
+                } else {
+                    eds.push(0);
+                }
+            });
+            edges
+        };
+        let (mut dp, starting_node) = {
+            let (mut dp, mut prf) = (vec![], vec![]);
+            let ps = (ins, del, score.clone());
             let seq = &seq[..d / 2];
-            let (_, tb) = self.align(seq, (ins, del, score.clone()));
-            tb.into_iter()
+            let (_, tb) = self.align_with_buf(seq, ps, (&mut dp, &mut prf), &edges);
+            let node: usize = tb
+                .into_iter()
                 .take_while(|e| match &e {
                     EditOp::Match(_) => false,
                     _ => true,
                 })
-                .map(|e| match &e {
-                    EditOp::Deletion(_) => 1,
-                    _ => 0,
-                })
-                .sum::<usize>()
-        };
-        let edges: Vec<Vec<_>> = {
-            let mut edges = vec![vec![]; self.nodes.len()];
-            for (from, n) in self.nodes.iter().enumerate() {
-                for &to in n.edges.iter() {
-                    edges[to].push(from + 1);
-                }
-                for &tied in n.ties.iter() {
-                    for &to in self.nodes[tied].edges.iter() {
-                        if edges[to].contains(&from) {
-                            edges[to].push(from + 1);
-                        }
-                    }
-                }
-            }
-            edges.iter_mut().for_each(|x| {
-                if x.is_empty() {
-                    x.push(0);
-                }
-            });
-            edges
+                .fold(0, |acc, e| match &e {
+                    EditOp::Deletion(_) => acc + 1,
+                    _ => acc,
+                });
+            (dp, node)
         };
         // Initialize large DP table. It requires O(mn) actually.
         // -----> query position ---->
@@ -319,12 +320,11 @@ impl PartialOrderAlignment {
         // |
         // v
         let (column, row) = (seq.len() + 1, self.nodes.len() + 1);
-        // let mut route_weight = vec![0; column * row];
         let small = -100000;
-        let mut dp = vec![small; column * row];
+        dp.clear();
+        dp.extend(std::iter::repeat(small).take(column * row));
         for j in 0..column {
             dp[j] = ins * j as i32;
-            //route_weight[j] = j as u32;
         }
         for i in 0..row {
             dp[i * column] = 0;
@@ -332,45 +332,17 @@ impl PartialOrderAlignment {
         // Filling  DP matrix sparsely.
         let starting_node = starting_node.max(d / 2) - d / 2;
         let filled_cells = self.determine_cells(starting_node, d, seq.len());
-        // for (g, q_poss) in filled_cells {
-        //     for q in q_poss {
         for (g, q) in filled_cells {
             let pos = (g + 1) * column + (q + 1);
-            //let insertion = dp[pos - 1] + ins;
             let mut max = dp[pos - 1] + ins;
-            //let ins_weight = route_weight[pos - 1] + 1;
-            // if insertion >= dp[pos] {
-            //     dp[pos] = insertion;
-            //route_weight[pos] = ins_weight;
-            //}
             for &prev in edges[g].iter() {
                 let prev_pos = prev * column + (q + 1);
                 let deletion = dp[prev_pos] + del;
-                max = max.max(deletion);
-                //let del_weight = route_weight[prev_pos];
-                //if deletion > dp[pos] {
-                //dp[pos] = deletion;
-                //route_weight[pos] = del_weight;
-                //} //  else if deletion == dp[pos] {
-                //  route_weight[pos] = route_weight[pos].max(del_weight);
-                // }
                 let mat_s = score(seq[q], self.nodes[g].base());
                 let mat_s = dp[prev_pos - 1] + mat_s;
-                max = max.max(mat_s);
-                //let mat_weight = route_weight[prev_pos - 1] + 1;
-                //if mat_s > dp[pos] {
-                //dp[pos] = mat_s;
-                //route_weight[pos] = mat_weight;
-                //} //  else if mat_s == dp[pos] {
-                // route_weight[pos] = route_weight[pos].max(mat_weight);
-                // }
-                //mat_s.max(deletion)
-                //}))
-                //.max()
-                //.unwrap();
+                max = max.max(deletion).max(mat_s);
             }
             dp[pos] = max;
-            //}
         }
         // Traceback.
         let mut q_pos = seq.len();
@@ -387,21 +359,16 @@ impl PartialOrderAlignment {
         'outer: while q_pos > 0 && g_pos > 0 {
             // Current score
             let c_score = dp[g_pos * column + q_pos];
-            //let weight = route_weight[g_pos * column + q_pos];
             for &p in edges[g_pos - 1].iter() {
                 let pos = p * column + q_pos;
-                //let (del, del_w) = (dp[pos] + del, route_weight[pos]);
                 let del = dp[pos] + del;
                 if del == c_score {
-                    //&& del_w == weight {
                     operations.push(EditOp::Deletion(g_pos - 1));
                     g_pos = p;
                     continue 'outer;
                 }
                 let mat = dp[pos - 1] + score(seq[q_pos - 1], self.nodes[g_pos - 1].base());
-                //let mat_w = route_weight[pos - 1] + 1;
                 if mat == c_score {
-                    //&& mat_w == weight {
                     operations.push(EditOp::Match(g_pos - 1));
                     g_pos = p;
                     q_pos -= 1;
@@ -410,9 +377,7 @@ impl PartialOrderAlignment {
             }
             // Insertion
             let ins = dp[g_pos * column + q_pos - 1] + ins;
-            //let ins_w = route_weight[g_pos * column + q_pos - 1] + 1;
             if ins == c_score {
-                //&& ins_w == weight {
                 q_pos -= 1;
                 operations.push(EditOp::Insertion(0));
                 continue 'outer;
@@ -425,52 +390,6 @@ impl PartialOrderAlignment {
         }
         operations.reverse();
         (opt_score, operations)
-    }
-    // Return all the node within `d`-hop from `start` node in the sorted order.
-    // Note that we treat the POA as an undirected graph by neglecting the directions of edges.
-    fn _select_radius_d(&self, start: usize, d: usize) -> Vec<usize> {
-        let mut stack = vec![];
-        let mut dist_from_start = vec![d + 2; self.nodes.len()];
-        let graph = {
-            let mut graph = vec![vec![]; self.nodes.len()];
-            for (from, node) in self.nodes.iter().enumerate() {
-                for &to in node.edges.iter() {
-                    graph[from].push(to);
-                    graph[to].push(from);
-                }
-            }
-            graph
-        };
-        let mut collected = vec![];
-        dist_from_start[start] = 0;
-        let mut dist = 0;
-        stack.push(start);
-        'dfs: while !stack.is_empty() {
-            let node = *stack.last().unwrap();
-            dist_from_start[node] = dist;
-            if dist < d {
-                for &to in graph[node].iter() {
-                    if dist + 1 < dist_from_start[to] {
-                        stack.push(to);
-                        dist += 1;
-                        continue 'dfs;
-                    }
-                }
-            }
-            let last = stack.pop().unwrap();
-            if dist <= d {
-                collected.push(last);
-            }
-            if last != start {
-                assert!(dist >= 1);
-                dist -= 1;
-            }
-        }
-        assert_eq!(dist, 0);
-        collected.sort();
-        collected.dedup();
-        assert!(collected.contains(&start));
-        collected
     }
     pub fn determine_cells(&self, g_start: usize, d: usize, qlen: usize) -> Vec<(usize, usize)> {
         let mut filled_range = vec![(qlen, 0); self.nodes.len()];
@@ -497,7 +416,6 @@ impl PartialOrderAlignment {
             for i in s..e {
                 poss.push((g, i));
             }
-            //.map(|(g, &(s, e))| (g, (s..e).collect()))
         }
         poss
     }
@@ -506,6 +424,7 @@ impl PartialOrderAlignment {
         seq: &[u8],
         (ins, del, score): (i32, i32, F),
         (dp, profile): (&mut Vec<i32>, &mut Vec<i32>),
+        edges: &[Vec<usize>],
     ) -> (i32, TraceBack)
     where
         F: Fn(u8, u8) -> i32,
@@ -540,17 +459,6 @@ impl PartialOrderAlignment {
                 }
             }
         }
-        let edges: Vec<Vec<_>> = self
-            .reverse_edges()
-            .iter()
-            .map(|edges| {
-                if !edges.is_empty() {
-                    edges.iter().map(|&p| p + 1).collect()
-                } else {
-                    vec![0]
-                }
-            })
-            .collect();
         // Initialazation.
         for _ in 0..column * row {
             dp.push(std::i32::MIN);
@@ -693,24 +601,10 @@ impl PartialOrderAlignment {
     where
         F: Fn(u8, u8) -> i32,
     {
-        let mut buf1 = vec![];
-        let mut buf2 = vec![];
-        self.add_with_buf(seq, w, parameters, (&mut buf1, &mut buf2))
-    }
-    pub fn add_with_buf<F>(
-        self,
-        seq: &[u8],
-        w: f64,
-        ps: (i32, i32, &F),
-        buffers: (&mut Vec<i32>, &mut Vec<i32>),
-    ) -> Self
-    where
-        F: Fn(u8, u8) -> i32,
-    {
         if self.weight < SMALL || self.nodes.is_empty() {
             return Self::new(seq, w);
         }
-        let (_, traceback) = self.align_with_buf(seq, ps, buffers);
+        let (_, traceback) = self.align(seq, parameters);
         self.integrate_alignment(seq, w, traceback)
     }
     fn integrate_alignment(mut self, seq: &[u8], w: f64, traceback: TraceBack) -> Self {
