@@ -50,51 +50,26 @@ impl Base {
         }
     }
     pub fn remove_if(&mut self, mapping: &[(usize, bool)]) {
-        self.weights = self
-            .weights
-            .iter()
-            .enumerate()
-            .filter(|&(idx, _)| mapping[self.edges[idx]].1)
-            .map(|(_, &w)| w)
-            .collect();
-        self.edges = self
-            .edges
-            .iter()
-            .filter_map(|&idx| {
-                if mapping[idx].1 {
-                    Some(mapping[idx].0)
-                } else {
-                    None
-                }
-            })
-            .collect();
-        self.ties = self
-            .ties
-            .iter()
-            .filter_map(|&idx| {
-                if mapping[idx].1 {
-                    Some(mapping[idx].0)
-                } else {
-                    None
-                }
-            })
-            .collect();
+        let retain: Vec<_> = self.edges.iter().map(|&idx| mapping[idx].1).collect();
+        {
+            let mut idx = 0;
+            self.weights.retain(|_| (retain[idx], idx += 1).0);
+        }
+        self.edges.retain(|&idx| mapping[idx].1);
+        self.edges.iter_mut().for_each(|idx| *idx = mapping[*idx].0);
+        self.ties.retain(|&idx| mapping[idx].1);
+        self.ties.iter_mut().for_each(|idx| *idx = mapping[*idx].0);
         assert_eq!(self.edges.len(), self.weights.len());
     }
     pub fn remove_edges(&mut self, e: &[bool]) {
-        if self.edges.len() <= 1 {
-            return;
+        {
+            let mut idx = 0;
+            self.weights.retain(|_| (e[idx], idx += 1).0);
         }
-        let removed = self
-            .edges()
-            .iter()
-            .zip(self.weights.iter())
-            .zip(e.iter())
-            .filter(|&(_, &b)| b);
-        let weights: Vec<_> = removed.clone().map(|((_, &w), _)| w).collect();
-        let edges: Vec<_> = removed.clone().map(|((&to, _), _)| to).collect();
-        self.weights = weights;
-        self.edges = edges;
+        {
+            let mut idx = 0;
+            self.edges.retain(|_| (e[idx], idx += 1).0);
+        }
     }
     pub fn finalize(&mut self, bases: &[u8]) {
         let tot = self.base_count.iter().sum::<f64>();
