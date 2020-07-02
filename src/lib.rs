@@ -320,11 +320,11 @@ impl PartialOrderAlignment {
         // |
         // v
         let (column, row) = (seq.len() + 1, self.nodes.len() + 1);
-        let small = -100000;
+        let small = -100_000;
         dp.clear();
         dp.extend(std::iter::repeat(small).take(column * row));
-        for j in 0..column {
-            dp[j] = ins * j as i32;
+        for (j, elm) in dp.iter_mut().enumerate().take(column) {
+            *elm = ins * j as i32;
         }
         for i in 0..row {
             dp[i * column] = 0;
@@ -403,7 +403,7 @@ impl PartialOrderAlignment {
                 if start + 1 < filled_range[to].0 || filled_range[to].1 < (end + 1).min(qlen) {
                     stack.push(to);
                     start = if end < d { 0 } else { start + 1 };
-                    end = end + 1;
+                    end += 1;
                     continue 'search;
                 }
             }

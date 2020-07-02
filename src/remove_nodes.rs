@@ -95,7 +95,10 @@ impl crate::PartialOrderAlignment {
                 (index + (!remove) as usize, map)
             });
         let mut idx = 0;
-        self.nodes.retain(|_| (!to_remove[idx], idx += 1).0);
+        self.nodes.retain(|_| {
+            idx += 1;
+            !to_remove[idx-1]
+        });
         self.nodes.iter_mut().for_each(|n| n.remove_if(&mapping));
         assert_eq!(self.nodes.len(), num);
         self

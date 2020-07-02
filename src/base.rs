@@ -53,7 +53,10 @@ impl Base {
         let retain: Vec<_> = self.edges.iter().map(|&idx| mapping[idx].1).collect();
         {
             let mut idx = 0;
-            self.weights.retain(|_| (retain[idx], idx += 1).0);
+            self.weights.retain(|_| {
+                idx += 1;
+                retain[idx - 1]
+            });
         }
         self.edges.retain(|&idx| mapping[idx].1);
         self.edges.iter_mut().for_each(|idx| *idx = mapping[*idx].0);
@@ -64,11 +67,17 @@ impl Base {
     pub fn remove_edges(&mut self, e: &[bool]) {
         {
             let mut idx = 0;
-            self.weights.retain(|_| (e[idx], idx += 1).0);
+            self.weights.retain(|_| {
+                idx += 1;
+                e[idx - 1]
+            });
         }
         {
             let mut idx = 0;
-            self.edges.retain(|_| (e[idx], idx += 1).0);
+            self.edges.retain(|_| {
+                idx += 1;
+                e[idx - 1]
+            });
         }
     }
     pub fn finalize(&mut self, bases: &[u8]) {
