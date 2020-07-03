@@ -1,3 +1,6 @@
+//! This module is to generate some random sequence to assess the performance.
+//! Usually, it would not be used in the real-applications.
+
 use rand::seq::SliceRandom;
 
 pub struct Profile {

@@ -1,9 +1,15 @@
+//! Fowrad algorithm module.
+//! Roughtly speaking, a POA graph is converted into a hidden Markov model,
+//! and the HMM determines the probability to seeing the input sequence.
+
 use crate::Config;
 use crate::PartialOrderAlignment;
 use crate::DEFAULT_LK;
 use crate::SMALL;
+#[cfg(feature = "poa_simd")]
 use packed_simd::f64x4 as f64s;
 impl PartialOrderAlignment {
+    #[cfg(feature = "poa_simd")]
     fn sum(xs: &[f64]) -> f64 {
         assert!(xs.len() % 4 == 0);
         xs.chunks_exact(f64s::lanes())
@@ -11,6 +17,11 @@ impl PartialOrderAlignment {
             .sum::<f64s>()
             .sum()
     }
+    #[cfg(not(feature = "poa_simd"))]
+    fn sum(xs: &[f64]) -> f64 {
+        xs.iter().sum()
+    }
+    #[cfg(feature = "poa_simd")]
     fn mul(xs: &mut [f64], y: f64) {
         assert!(xs.len() % 4 == 0);
         let ys = f64s::splat(y);
@@ -19,6 +30,11 @@ impl PartialOrderAlignment {
             packed.write_to_slice_unaligned(xs);
         });
     }
+    #[cfg(not(feature = "poa_simd"))]
+    fn mul(xs: &mut [f64], y: f64) {
+        xs.iter_mut().for_each(|x| *x *= y);
+    }
+
     fn update_row(
         &self,
         updates: &mut [f64],
@@ -86,6 +102,9 @@ impl PartialOrderAlignment {
         Self::mul(updates, c);
         (c, d)
     }
+    /// Forward algorithm. Return the log-likelihood to
+    /// observing the `obs` sequence. Hyper-parameters can be
+    /// tuned via `config` parameters.
     pub fn forward(&self, obs: &[u8], config: &Config) -> f64 {
         if self.nodes.is_empty() {
             return DEFAULT_LK;

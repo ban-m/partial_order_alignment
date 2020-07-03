@@ -1,3 +1,8 @@
+//! Here we define some useful configurations for Partial Order Hidden Markov Model.
+//! Though it hopefully would be a good guess, I recommend to calculate these parameters for each dataset one by one.
+
+/// Configuration for BADREAD read simulator.
+/// There parameters are tuned by hand and Last program.
 pub const BADREAD_CONFIG: Config = Config {
     mismatch: 0.0344,
     base_freq: [0.25, 0.25, 0.25, 0.25],
@@ -9,6 +14,7 @@ pub const BADREAD_CONFIG: Config = Config {
     p_del_to_ins: 0.0,
 };
 
+/// Default configuration. Parameters are tuned just by my guess.
 pub const DEFAULT_CONFIG: Config = Config {
     mismatch: 0.04,
     base_freq: [0.25, 0.25, 0.25, 0.25],
@@ -20,6 +26,8 @@ pub const DEFAULT_CONFIG: Config = Config {
     p_del_to_ins: 0.08,
 };
 
+/// Strict configuration. In other words, this configuration is for
+/// CCS reads.
 pub const STRICT_CONFIG: Config = Config {
     mismatch: 0.02,
     base_freq: [0.25, 0.25, 0.25, 0.25],
@@ -31,6 +39,8 @@ pub const STRICT_CONFIG: Config = Config {
     p_del_to_ins: 0.02,
 };
 
+/// Configuration for PacBio's sequel system.
+/// There parameters are tuned by Last program.
 pub const PACBIO_CONFIG: Config = Config {
     mismatch: 0.0341,
     base_freq: [0.28, 0.22, 0.22, 0.28],
@@ -81,6 +91,7 @@ impl std::fmt::Display for Config {
 }
 
 impl Config {
+    /// Create a new configuration from the given parameters.
     pub fn new(
         mismatch: f64,
         (p_match, p_ins, p_del): (f64, f64, f64),
@@ -98,7 +109,10 @@ impl Config {
             p_del_to_ins,
         }
     }
-    pub fn null_model(&self, seq: &[u8]) -> f64 {
+    /// Return the likelihood of the null model.
+    /// Here, the null model is the single-state 0-th order Markov model
+    /// ,which generate each base (A, T, G, and C) by base_freq[base].
+    pub fn likelihood_of_null_model(&self, seq: &[u8]) -> f64 {
         let mut counts = [0; 4];
         for &base in seq {
             counts[super::base_table::BASE_TABLE[base as usize]] += 1;

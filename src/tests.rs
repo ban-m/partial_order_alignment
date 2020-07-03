@@ -243,7 +243,7 @@ fn forward() {
         b"CACACACACGTGTACGTGTTGGGGGGCTAAA".to_vec(),
         b"CACACACACGTGTACGTGTTGGGGGGCTAAA".to_vec(),
     ];
-    let m = POA::generate_vec(&test);
+    let m = POA::from_vec_default(&test);
     eprintln!("{}", m);
     let lk = m.forward(b"CACACAGCAGTCAGTGCA", &DEFAULT_CONFIG);
     eprintln!("{}", lk);
@@ -350,7 +350,7 @@ fn forward_check() {
     let model1: Vec<Vec<_>> = (0..20)
         .map(|_| introduce_randomness(&template, &mut rng, &PROFILE))
         .collect();
-    let m = POA::generate_vec(&model1);
+    let m = POA::from_vec_default(&model1);
     let lk = m.forward(&template, &DEFAULT_CONFIG);
     eprintln!("{:?}", m);
     assert!(lk < 0., "{}", lk);
@@ -376,8 +376,8 @@ fn random_check() {
                 .collect()
         })
         .collect();
-    let model1 = POA::generate_vec(&model1);
-    let model2 = POA::generate_vec(&model2);
+    let model1 = POA::from_vec_default(&model1);
+    let model2 = POA::from_vec_default(&model2);
     eprintln!("{}/{}", model1, model2);
     let likelihood1 = model1.forward(&template, &DEFAULT_CONFIG);
     let likelihood2 = model2.forward(&template, &DEFAULT_CONFIG);
@@ -396,7 +396,7 @@ fn random_check_forward() {
         let model1: Vec<Vec<_>> = (0..50)
             .map(|_| introduce_randomness(&template, &mut rng, &PROFILE))
             .collect();
-        let model1 = POA::generate_vec(&model1);
+        let model1 = POA::from_vec_default(&model1);
         eprintln!("{:?}", model1);
         for _ in 0..100 {
             let query = introduce_randomness(&template, &mut rng, &PROFILE);
@@ -425,8 +425,8 @@ fn hard_test() {
     let model2: Vec<Vec<_>> = (0..50)
         .map(|_| introduce_randomness(&template2, &mut rng, &PROFILE))
         .collect();
-    let model1 = POA::generate_vec(&model1);
-    let model2 = POA::generate_vec(&model2);
+    let model1 = POA::from_vec_default(&model1);
+    let model2 = POA::from_vec_default(&model2);
     eprintln!("{}", String::from_utf8_lossy(&template1));
     eprintln!("{}", String::from_utf8_lossy(&template2));
     let template1 = introduce_randomness(&template1, &mut rng, &PROFILE);
@@ -485,8 +485,8 @@ fn mix_test_prior() {
             .collect();
         let weight1 = vec![vec![0.8; cov], vec![0.2; cov]].concat();
         let weight2 = vec![vec![0.2; cov], vec![0.8; cov]].concat();
-        let model1 = POA::generate(&dataset, &weight1, parameters);
-        let model2 = POA::generate(&dataset, &weight2, parameters);
+        let model1 = POA::from_slice(&dataset, &weight1, parameters);
+        let model2 = POA::from_slice(&dataset, &weight2, parameters);
         eprintln!("{}\n{}", model1, model2);
         let num = 50;
         let correct = (0..num)
@@ -546,8 +546,8 @@ fn abundance_test_prior() {
         let data2: Vec<_> = data2.iter().map(|e| e.as_slice()).collect();
         let total = (ratio + 1) * cov;
         let weight = vec![1.; total];
-        let model1 = POA::generate(&data1, &weight, parameters);
-        let model2 = POA::generate(&data2, &weight, parameters);
+        let model1 = POA::from_slice(&data1, &weight, parameters);
+        let model2 = POA::from_slice(&data2, &weight, parameters);
         eprintln!("{}", model1);
         eprintln!("{}", String::from_utf8_lossy(&template1));
         eprintln!("{}", String::from_utf8_lossy(&model1.consensus()));
@@ -637,8 +637,8 @@ fn check<R: rand::Rng>(t1: &[u8], t2: &[u8], rng: &mut R, cov: usize) -> usize {
     let parameters = (-6, -6, &score);
     let weight1 = vec![vec![1.; cov], vec![0.; cov]].concat();
     let weight2 = vec![vec![0.; cov], vec![1.; cov]].concat();
-    let m1 = POA::generate(&seqs, &weight1, parameters);
-    let m2 = POA::generate(&seqs, &weight2, parameters);
+    let m1 = POA::from_slice(&seqs, &weight1, parameters);
+    let m2 = POA::from_slice(&seqs, &weight2, parameters);
     eprintln!("{}\t{}\t{}", cov, m1, m2);
     let tests: Vec<_> = (0..100)
         .map(|e| {
@@ -717,8 +717,8 @@ fn check_ccs<R: rand::Rng>(t1: &[u8], t2: &[u8], rng: &mut R, cov: usize) -> usi
     let parameters = (-6, -6, &score);
     let weight1 = vec![vec![1.; cov], vec![0.; cov]].concat();
     let weight2 = vec![vec![0.; cov], vec![1.; cov]].concat();
-    let m1 = POA::generate(&seqs, &weight1, parameters);
-    let m2 = POA::generate(&seqs, &weight2, parameters);
+    let m1 = POA::from_slice(&seqs, &weight1, parameters);
+    let m2 = POA::from_slice(&seqs, &weight2, parameters);
     eprintln!("{}\t{}\t{}", cov, m1, m2);
     let tests: Vec<_> = (0..100)
         .map(|e| {
@@ -763,9 +763,9 @@ fn low_coverage_test() {
     let test2 = introduce_randomness(&template2, &mut rng, &PROFILE);
     eprintln!("1:{}", String::from_utf8_lossy(&test1));
     eprintln!("2:{}", String::from_utf8_lossy(&test2));
-    let model1 = POA::generate_vec(&model1);
+    let model1 = POA::from_vec_default(&model1);
     eprintln!("Model1:\n{:?}", model1);
-    let model2 = POA::generate_vec(&model2);
+    let model2 = POA::from_vec_default(&model2);
     eprintln!("Model2:\n{:?}", model2);
     {
         let likelihood1 = model1.forward(&test1, &DEFAULT_CONFIG);
@@ -794,8 +794,6 @@ fn high_coverage_test() {
         .collect();
     let test1 = introduce_randomness(&template1, &mut rng, &PROFILE);
     let test2 = introduce_randomness(&template2, &mut rng, &PROFILE);
-    eprintln!("1:{}", String::from_utf8_lossy(&template1));
-    eprintln!("2:{}", String::from_utf8_lossy(&template2));
     let dataset: Vec<_> = model1
         .iter()
         .chain(model2.iter())
@@ -803,10 +801,20 @@ fn high_coverage_test() {
         .collect();
     let weight1 = vec![vec![1.; 200], vec![0.; 200]].concat();
     let weight2 = vec![vec![0.; 200], vec![1.; 200]].concat();
-    let model1 = POA::generate_by(&dataset, &weight1, &DEFAULT_CONFIG);
+    let c = &DEFAULT_CONFIG;
+    let ins = (c.p_ins.ln() * 3.).floor() as i32;
+    let del = (c.p_del.ln() * 3.).floor() as i32;
+    let mat = (-10. * c.p_match.ln() * 3.).floor() as i32;
+    let mism = (c.mismatch.ln() * 3.).floor() as i32;
+    let score = |x, y| if x == y { mat } else { mism };
+    let model1 = POA::from_slice(&dataset, &weight1, (ins, del, &score));
     eprintln!("Model1:{:?}", model1);
-    let model2 = POA::generate_by(&dataset, &weight2, &DEFAULT_CONFIG);
+    let model2 = POA::from_slice(&dataset, &weight2, (ins, del, &score));
     eprintln!("Model2:{:?}", model2);
+    eprintln!("1:{}", String::from_utf8_lossy(&template1));
+    eprintln!("1:{}", String::from_utf8_lossy(&model1.consensus()));
+    eprintln!("2:{}", String::from_utf8_lossy(&template2));
+    eprintln!("2:{}", String::from_utf8_lossy(&model2.consensus()));
     {
         let likelihood1 = model1.forward(&test1, &DEFAULT_CONFIG);
         let likelihood2 = model2.forward(&test1, &DEFAULT_CONFIG);
@@ -870,9 +878,9 @@ fn check_banded<R: rand::Rng>(t1: &[u8], t2: &[u8], rng: &mut R, cov: usize) -> 
     let score = |x, y| if x == y { 3 } else { -4 };
     let parameters = (-6, -6, &score);
     let seqs: Vec<_> = model1.iter().map(|e| e.as_slice()).collect();
-    let m1 = POA::generate_banded(&seqs, parameters, 10, 1010);
+    let m1 = POA::from_slice_banded(&seqs, parameters, 10);
     let seqs: Vec<_> = model2.iter().map(|e| e.as_slice()).collect();
-    let m2 = POA::generate_banded(&seqs, parameters, 10, 1010);
+    let m2 = POA::from_slice_banded(&seqs, parameters, 10);
     eprintln!("{}\t{}\t{}", cov, m1, m2);
     let tests: Vec<_> = (0..100)
         .map(|e| {

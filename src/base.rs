@@ -1,19 +1,33 @@
 use super::base_table::BASE_TABLE;
 use super::{LAMBDA_INS, LAMBDA_MATCH};
 use std::fmt;
+/// Node of the POA graph.
 #[derive(Default, Clone)]
 pub struct Base {
+    /// Base (b'A', b'C', b'G', or b'T').
     pub base: u8,
+    /// Edges. Each element is the index of the parent `nodes`.
     pub edges: Vec<usize>,
-    // Mismatch tie.
+    /// Mismatch tie. To see the information about ties, see "POA::edges()".
     pub ties: Vec<usize>,
+    /// Weights of each edges. After `POA::finalize()`, it is normalized so that
+    /// the sum equals to one.
     pub weights: Vec<f64>,
+    /// Raw base count of the out-edges.
     pub base_count: [f64; 4],
+    /// Weight of the node.
     pub weight: f64,
+    /// Weight of the node, especially the situation where
+    /// this node is the first character of the sequence.
     pub head_weight: f64,
+    /// Weight of the node, especially when
+    /// this node is the last chatacter of the sequence.
     pub tail_weight: f64,
+    /// Flag. If true, there was a sequence where this node was the first character.
     pub is_tail: bool,
+    /// Flag. If true, there was a sequence where this node was the last character.
     pub is_head: bool,
+    /// Heviest base.
     pub heaviest: u8,
 }
 
@@ -39,7 +53,7 @@ impl Base {
     pub fn head_weight(&self) -> f64 {
         self.head_weight
     }
-    // Remove edges to `node`
+    /// Remove edges to `node`
     pub fn remove(&mut self, node: usize) {
         if let Some(idx) = self.edges.iter().position(|&to| to == node) {
             self.edges.remove(idx);
@@ -177,13 +191,6 @@ impl Base {
             .zip(e.iter())
             .filter_map(move |(w, b)| if !b { Some(w) } else { None })
     }
-    // pub fn weights_except<'a>(&'a self, e: usize) -> impl Iterator<Item = &'a f64> {
-    //     self.edges
-    //         .iter()
-    //         .zip(self.weights.iter())
-    //         .filter_map(move |(&x, w)| if x != e { Some(w) } else { None })
-    // }
-    // return P(v|u)
     pub fn weights(&self) -> &[f64] {
         &self.weights
     }

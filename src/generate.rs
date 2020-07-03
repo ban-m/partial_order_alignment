@@ -1,5 +1,8 @@
 use crate::PartialOrderAlignment;
 impl PartialOrderAlignment {
+    /// Generate consensus from POA graph.
+    /// This function is totally immature.
+    /// Please read the code, and give me some recommendations.
     pub fn consensus(&self) -> Vec<u8> {
         let mut node = self
             .nodes
