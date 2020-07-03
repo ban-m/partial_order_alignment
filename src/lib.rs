@@ -1,14 +1,6 @@
-#![feature(test)]
 #[allow(unused_imports)]
 #[macro_use]
 extern crate log;
-extern crate packed_simd;
-extern crate rand;
-extern crate rand_xoshiro;
-#[cfg(test)]
-extern crate rayon;
-#[cfg(test)]
-extern crate test;
 use rand::SeedableRng;
 use rand_xoshiro::Xoshiro256StarStar;
 mod config;
@@ -25,11 +17,11 @@ mod remove_nodes;
 const SMALL: f64 = 0.000_000_001;
 const LAMBDA_INS: f64 = 0.09;
 const LAMBDA_MATCH: f64 = 0.09;
-// const LAMBDA_INS: f64 = 0.09;
-// const LAMBDA_MATCH: f64 = 0.09;
 const THR: f64 = 0.4;
 pub const DEFAULT_LK: f64 = -150.;
 pub mod generate;
+#[cfg(test)]
+extern crate rayon;
 #[cfg(test)]
 mod tests;
 
@@ -419,6 +411,7 @@ impl PartialOrderAlignment {
         }
         poss
     }
+    #[cfg(feature(repr_simd))]
     pub fn align_with_buf<F>(
         &self,
         seq: &[u8],
