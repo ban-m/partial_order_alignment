@@ -82,7 +82,10 @@ impl PartialOrderAlignment {
     }
     /// Return the number of edges.
     pub fn num_edges(&self) -> usize {
-        self.nodes.iter().map(|n| n.edges.len()).sum::<usize>()
+        self.nodes
+            .iter()
+            .map(|n| n.edges.len() + n.ties.len())
+            .sum::<usize>()
     }
     /// Return the weight of the graph.
     /// Usually, it returns the number of sequences added to the graph.
