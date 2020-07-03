@@ -838,9 +838,9 @@ impl PartialOrderAlignment {
     }
     /// Return the edges.
     /// Note that there are two kind of edges. One is usual edges, i.e., the edges link consective bases. The other is "tie"-edge, which ties two different bases that have the same child node. In other words, if there is a mis-match like
-    /// AACA
-    /// ||X|
-    /// AAGT,
+    /// AACATT
+    /// ||XX||
+    /// AAGTTT,
     /// the C and G would be tied by a "tie"-edge.
     /// This "tie"-edge is necessary, as I want to align AACT to the resulting graph with NO MISMATCH.
     /// Of course, this choice is arbitrary, and it may be changed in the future.
