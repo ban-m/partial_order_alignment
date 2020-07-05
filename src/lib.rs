@@ -6,7 +6,9 @@ extern crate packed_simd;
 use rand::SeedableRng;
 use rand_xoshiro::Xoshiro256StarStar;
 mod config;
+mod multipse_sequence_alignment;
 pub use config::*;
+pub use multipse_sequence_alignment::*;
 pub mod base;
 mod base_table;
 use base::Base;
@@ -82,10 +84,7 @@ impl PartialOrderAlignment {
     }
     /// Return the number of edges.
     pub fn num_edges(&self) -> usize {
-        self.nodes
-            .iter()
-            .map(|n| n.edges.len() + n.ties.len())
-            .sum::<usize>()
+        self.edges().iter().map(|eds| eds.len()).sum::<usize>()
     }
     /// Return the weight of the graph.
     /// Usually, it returns the number of sequences added to the graph.
@@ -100,25 +99,27 @@ impl PartialOrderAlignment {
     /// let poa = POA::default().add_default(query, 1.);
     /// let (_,aln) = poa.align(query, (-1,-1,|x,y|if x == y { 1 } else { -1 }));
     /// let (qry ,rfr) = poa.view(query, &aln);
+    /// let qry = String::from_utf8_lossy(&qry);
+    /// let rfr = String::from_utf8_lossy(&rfr);
     /// eprintln!("{}\t{}", qry, rfr);
     /// ```
-    pub fn view(&self, seq: &[u8], traceback: &[EditOp]) -> (String, String) {
+    pub fn view(&self, seq: &[u8], traceback: &[EditOp]) -> (Vec<u8>, Vec<u8>) {
         let mut q_pos = 0;
-        let (mut q, mut g) = (String::new(), String::new());
+        let (mut q, mut g) = (vec![], vec![]);
         for &op in traceback {
             match op {
                 EditOp::Deletion(g_pos) => {
-                    q.push('-');
-                    g.push(self.nodes()[g_pos].base() as char);
+                    q.push(b'-');
+                    g.push(self.nodes()[g_pos].base());
                 }
                 EditOp::Insertion => {
-                    g.push('-');
-                    q.push(seq[q_pos] as char);
+                    g.push(b'-');
+                    q.push(seq[q_pos]);
                     q_pos += 1;
                 }
                 EditOp::Match(g_pos) => {
-                    g.push(self.nodes()[g_pos].base() as char);
-                    q.push(seq[q_pos] as char);
+                    g.push(self.nodes()[g_pos].base());
+                    q.push(seq[q_pos]);
                     q_pos += 1;
                 }
                 EditOp::Stop => {}
