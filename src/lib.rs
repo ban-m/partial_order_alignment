@@ -326,7 +326,9 @@ impl PartialOrderAlignment {
     where
         F: Fn(u8, u8) -> i32 + Clone,
     {
-        // Search for the starting node. use the first `d` rows to determine the starting point.
+        if seq.len() <= d {
+            return self.align(seq, (ins, del, score));
+        }
         let edges: Vec<Vec<_>> = {
             let mut edges = self.reverse_edges();
             edges.iter_mut().for_each(|eds| {
@@ -337,22 +339,6 @@ impl PartialOrderAlignment {
                 }
             });
             edges
-        };
-        let starting_node = {
-            let ps = (ins, del, score.clone());
-            let seq = &seq[..d / 2];
-            let (_, tb) = self.align(seq, ps);
-            let node: usize = tb
-                .into_iter()
-                .take_while(|e| match &e {
-                    EditOp::Match(_) => false,
-                    _ => true,
-                })
-                .fold(0, |acc, e| match &e {
-                    EditOp::Deletion(_) => acc + 1,
-                    _ => acc,
-                });
-            node
         };
         // Initialize large DP table. It requires O(mn) actually.
         // -----> query position ---->
@@ -373,9 +359,61 @@ impl PartialOrderAlignment {
         for i in 0..row {
             dp[i * column] = 0;
         }
+        // Filling DP matrix in full.
+        let probe = d / 2;
+        for q in 0..probe {
+            for g in 0..row - 1 {
+                let pos = (g + 1) * column + (q + 1);
+                let mut max = dp[pos - 1] + ins;
+                for &prev in edges[g].iter() {
+                    let prev_pos = prev * column + (q + 1);
+                    let deletion = dp[prev_pos] + del;
+                    let mat_s = score(seq[q], self.nodes[g].base());
+                    let mat_s = dp[prev_pos - 1] + mat_s;
+                    max = max.max(deletion).max(mat_s);
+                }
+                dp[pos] = max;
+            }
+        }
+        // Determine the starting point.
+        let starting_node = {
+            let mut q_pos = probe;
+            let (mut g_pos, _) = (0..row - 1)
+                .map(|r| (r + 1, dp[(r + 1) * column + probe]))
+                .max_by(|a, b| match (a.1).cmp(&b.1) {
+                    std::cmp::Ordering::Equal => (b.0).cmp(&a.0),
+                    x => x,
+                })
+                .unwrap();
+            'outer1: while q_pos > 0 && g_pos > 0 {
+                let c_score = dp[g_pos * column + q_pos];
+                for &p in edges[g_pos - 1].iter() {
+                    let pos = p * column + q_pos;
+                    let del = dp[pos] + del;
+                    if del == c_score {
+                        g_pos = p;
+                        continue 'outer1;
+                    }
+                    let mat = dp[pos - 1] + score(seq[q_pos - 1], self.nodes[g_pos - 1].base());
+                    if mat == c_score {
+                        g_pos = p;
+                        q_pos -= 1;
+                        continue 'outer1;
+                    }
+                }
+                // Insertion
+                let ins = dp[g_pos * column + q_pos - 1] + ins;
+                if ins == c_score {
+                    q_pos -= 1;
+                    continue 'outer1;
+                }
+                panic!("error. none of choices match the current trace table.");
+            }
+            g_pos
+        };
         // Filling  DP matrix sparsely.
-        let starting_node = starting_node.max(d / 2) - d / 2;
-        let filled_cells = self.determine_cells(starting_node, d, seq.len());
+        let starting_node = starting_node.max(probe) - probe;
+        let filled_cells = self.determine_cells(starting_node, probe, d, seq.len());
         for (g, q) in filled_cells {
             let pos = (g + 1) * column + (q + 1);
             let mut max = dp[pos - 1] + ins;
@@ -435,7 +473,14 @@ impl PartialOrderAlignment {
         operations.reverse();
         (opt_score, operations)
     }
-    fn determine_cells(&self, g_start: usize, d: usize, qlen: usize) -> Vec<(usize, usize)> {
+    fn determine_cells(
+        &self,
+        g_start: usize,
+        q_start: usize,
+        d: usize,
+        qlen: usize,
+    ) -> Vec<(usize, usize)> {
+        // The range of the query to be filled for the i-th node in the graph.
         let mut filled_range = vec![(qlen, 0); self.nodes.len()];
         let (mut start, mut end) = (0, d / 2 + 1);
         let mut stack = vec![g_start];
@@ -457,6 +502,7 @@ impl PartialOrderAlignment {
         }
         let mut poss = vec![];
         for (g, &(s, e)) in filled_range.iter().enumerate().skip(g_start) {
+            let s = s.max(q_start);
             for i in s..e {
                 poss.push((g, i));
             }
