@@ -113,13 +113,7 @@ impl Base {
         }
     }
     pub fn add(&mut self, b: u8, w: f64, idx: usize) {
-        let pos = match self
-            .edges
-            .iter()
-            .enumerate()
-            .filter(|&(_, &to)| to == idx)
-            .nth(0)
-        {
+        let pos = match self.edges.iter().enumerate().find(|&(_, &to)| to == idx) {
             Some((pos, _)) => pos,
             None => {
                 self.edges.push(idx);
@@ -148,8 +142,7 @@ impl Base {
             .edges
             .iter()
             .zip(self.weights.iter())
-            .filter(|&(&idx, _)| idx == to)
-            .nth(0)
+            .find(|&(&idx, _)| idx == to)
             .unwrap()
             .1
     }

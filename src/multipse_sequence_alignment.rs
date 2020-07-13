@@ -78,12 +78,12 @@ where
         let msa = self
             .seqs
             .iter()
-            .fold(super::POA::default(), |x, y| x.add(y, 1., param.clone()));
+            .fold(super::POA::default(), |x, y| x.add(y, 1., param));
         self.ids
             .into_iter()
             .zip(self.seqs.iter())
             .map(|(id, seq)| {
-                let q = Self::recover(&msa, seq, param.clone());
+                let q = Self::recover(&msa, seq, param);
                 (id, q)
             })
             .collect()
@@ -98,12 +98,9 @@ where
         let mut q_pos = 0;
         use super::EditOp;
         for op in tb {
-            match op {
-                EditOp::Match(g_pos) => {
-                    res[g_pos] = seq[q_pos];
-                    q_pos += 1;
-                }
-                _ => {}
+            if let EditOp::Match(g_pos) = op {
+                res[g_pos] = seq[q_pos];
+                q_pos += 1;
             }
         }
         res
