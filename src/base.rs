@@ -1,19 +1,33 @@
 use super::base_table::BASE_TABLE;
 use super::{LAMBDA_INS, LAMBDA_MATCH};
 use std::fmt;
+/// Node of the POA graph.
 #[derive(Default, Clone)]
 pub struct Base {
+    /// Base (b'A', b'C', b'G', or b'T').
     pub base: u8,
+    /// Edges. Each element is the index of the parent `nodes`.
     pub edges: Vec<usize>,
-    // Mismatch tie.
+    /// Mismatch tie. To see the information about ties, see "POA::edges()".
     pub ties: Vec<usize>,
+    /// Weights of each edges. After `POA::finalize()`, it is normalized so that
+    /// the sum equals to one.
     pub weights: Vec<f64>,
+    /// Raw base count of the out-edges.
     pub base_count: [f64; 4],
+    /// Weight of the node.
     pub weight: f64,
+    /// Weight of the node, especially the situation where
+    /// this node is the first character of the sequence.
     pub head_weight: f64,
+    /// Weight of the node, especially when
+    /// this node is the last chatacter of the sequence.
     pub tail_weight: f64,
+    /// Flag. If true, there was a sequence where this node was the first character.
     pub is_tail: bool,
+    /// Flag. If true, there was a sequence where this node was the last character.
     pub is_head: bool,
+    /// Heviest base.
     pub heaviest: u8,
 }
 
@@ -39,7 +53,7 @@ impl Base {
     pub fn head_weight(&self) -> f64 {
         self.head_weight
     }
-    // Remove edges to `node`
+    /// Remove edges to `node`
     pub fn remove(&mut self, node: usize) {
         if let Some(idx) = self.edges.iter().position(|&to| to == node) {
             self.edges.remove(idx);
@@ -50,51 +64,35 @@ impl Base {
         }
     }
     pub fn remove_if(&mut self, mapping: &[(usize, bool)]) {
-        self.weights = self
-            .weights
-            .iter()
-            .enumerate()
-            .filter(|&(idx, _)| mapping[self.edges[idx]].1)
-            .map(|(_, &w)| w)
-            .collect();
-        self.edges = self
-            .edges
-            .iter()
-            .filter_map(|&idx| {
-                if mapping[idx].1 {
-                    Some(mapping[idx].0)
-                } else {
-                    None
-                }
-            })
-            .collect();
-        self.ties = self
-            .ties
-            .iter()
-            .filter_map(|&idx| {
-                if mapping[idx].1 {
-                    Some(mapping[idx].0)
-                } else {
-                    None
-                }
-            })
-            .collect();
+        let retain: Vec<_> = self.edges.iter().map(|&idx| mapping[idx].1).collect();
+        {
+            let mut idx = 0;
+            self.weights.retain(|_| {
+                idx += 1;
+                retain[idx - 1]
+            });
+        }
+        self.edges.retain(|&idx| mapping[idx].1);
+        self.edges.iter_mut().for_each(|idx| *idx = mapping[*idx].0);
+        self.ties.retain(|&idx| mapping[idx].1);
+        self.ties.iter_mut().for_each(|idx| *idx = mapping[*idx].0);
         assert_eq!(self.edges.len(), self.weights.len());
     }
     pub fn remove_edges(&mut self, e: &[bool]) {
-        if self.edges.len() <= 1 {
-            return;
+        {
+            let mut idx = 0;
+            self.weights.retain(|_| {
+                idx += 1;
+                e[idx - 1]
+            });
         }
-        let removed = self
-            .edges()
-            .iter()
-            .zip(self.weights.iter())
-            .zip(e.iter())
-            .filter(|&(_, &b)| b);
-        let weights: Vec<_> = removed.clone().map(|((_, &w), _)| w).collect();
-        let edges: Vec<_> = removed.clone().map(|((&to, _), _)| to).collect();
-        self.weights = weights;
-        self.edges = edges;
+        {
+            let mut idx = 0;
+            self.edges.retain(|_| {
+                idx += 1;
+                e[idx - 1]
+            });
+        }
     }
     pub fn finalize(&mut self, bases: &[u8]) {
         let tot = self.base_count.iter().sum::<f64>();
@@ -115,13 +113,7 @@ impl Base {
         }
     }
     pub fn add(&mut self, b: u8, w: f64, idx: usize) {
-        let pos = match self
-            .edges
-            .iter()
-            .enumerate()
-            .filter(|&(_, &to)| to == idx)
-            .nth(0)
-        {
+        let pos = match self.edges.iter().enumerate().find(|&(_, &to)| to == idx) {
             Some((pos, _)) => pos,
             None => {
                 self.edges.push(idx);
@@ -150,8 +142,7 @@ impl Base {
             .edges
             .iter()
             .zip(self.weights.iter())
-            .filter(|&(&idx, _)| idx == to)
-            .nth(0)
+            .find(|&(&idx, _)| idx == to)
             .unwrap()
             .1
     }
@@ -193,13 +184,6 @@ impl Base {
             .zip(e.iter())
             .filter_map(move |(w, b)| if !b { Some(w) } else { None })
     }
-    // pub fn weights_except<'a>(&'a self, e: usize) -> impl Iterator<Item = &'a f64> {
-    //     self.edges
-    //         .iter()
-    //         .zip(self.weights.iter())
-    //         .filter_map(move |(&x, w)| if x != e { Some(w) } else { None })
-    // }
-    // return P(v|u)
     pub fn weights(&self) -> &[f64] {
         &self.weights
     }

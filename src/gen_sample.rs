@@ -1,3 +1,6 @@
+//! This module is to generate some random sequence to assess the performance.
+//! Usually, it would not be used in the real-applications.
+
 use rand::seq::SliceRandom;
 
 pub struct Profile {
@@ -30,6 +33,12 @@ pub const PROFILE: Profile = Profile {
     sub: 0.04,
     del: 0.04,
     ins: 0.07,
+};
+
+pub const CCS_PROFILE: Profile = Profile {
+    sub: 0.002,
+    del: 0.004,
+    ins: 0.004,
 };
 
 #[derive(Debug, Clone, Copy)]

@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 impl crate::PartialOrderAlignment {
     pub fn remove_node(mut self, thr: f64) -> Self {
+        //debug!("Removing...{}", self.nodes.len());
         if self.nodes.len() < 2 {
             panic!("Invalid input:{}", self);
         }
@@ -93,16 +94,12 @@ impl crate::PartialOrderAlignment {
                 map.push((index, !remove));
                 (index + (!remove) as usize, map)
             });
-        self.nodes = self
-            .nodes
-            .into_iter()
-            .zip(to_remove)
-            .filter(|(_, &b)| !b)
-            .map(|(mut node, _)| {
-                node.remove_if(&mapping);
-                node
-            })
-            .collect();
+        let mut idx = 0;
+        self.nodes.retain(|_| {
+            idx += 1;
+            !to_remove[idx-1]
+        });
+        self.nodes.iter_mut().for_each(|n| n.remove_if(&mapping));
         assert_eq!(self.nodes.len(), num);
         self
     }

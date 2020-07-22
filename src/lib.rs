@@ -1,21 +1,18 @@
-#![feature(test)]
+#[allow(unused_imports)]
+#[macro_use]
 extern crate log;
+#[cfg(feature = "poa_simd")]
 extern crate packed_simd;
-extern crate rand;
-extern crate rand_xoshiro;
-#[cfg(test)]
-extern crate rayon;
-#[cfg(test)]
-extern crate test;
 use rand::SeedableRng;
 use rand_xoshiro::Xoshiro256StarStar;
 mod config;
+mod multipse_sequence_alignment;
 pub use config::*;
+pub use multipse_sequence_alignment::*;
 pub mod base;
 mod base_table;
 use base::Base;
 mod add_sequence;
-mod construct;
 mod formatters;
 pub mod forward;
 pub mod gen_sample;
@@ -23,34 +20,47 @@ mod remove_nodes;
 const SMALL: f64 = 0.000_000_001;
 const LAMBDA_INS: f64 = 0.09;
 const LAMBDA_MATCH: f64 = 0.09;
-// const LAMBDA_INS: f64 = 0.09;
-// const LAMBDA_MATCH: f64 = 0.09;
 const THR: f64 = 0.4;
 pub const DEFAULT_LK: f64 = -150.;
 pub mod generate;
 #[cfg(test)]
+extern crate rayon;
+#[cfg(test)]
 mod tests;
 
-// Edit operation
+/// Edit operations.
+/// The inner fields in the `EditOp::Match` and `EditOp::Deltion` enums
+/// are to indicate the next position of the POA graph.
+/// Note that, when we encounter an `EditOp::Insertion` operation,
+/// the position of the graph would never change. Thus,
+/// there is no inner fileds in an `EditOp::Insertion`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EditOp {
+    /// Match between the query and the graph.
     Match(usize),
+    /// Deletion in the graph. In other words, it proceeds the position of the
+    /// graph.
     Deletion(usize),
-    Insertion(usize),
+    /// Insertion to the graph. In other words, it proceeds the position of the query.
+    Insertion,
+    /// Stop operation. It is only used as a sentinel.
     Stop,
 }
+
 impl std::fmt::Display for EditOp {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match &self {
             EditOp::Match(_) => write!(f, "M"),
             EditOp::Deletion(_) => write!(f, "D"),
-            EditOp::Insertion(_) => write!(f, "I"),
+            EditOp::Insertion => write!(f, "I"),
             EditOp::Stop => write!(f, "S"),
         }
     }
 }
 
 pub type POA = PartialOrderAlignment;
+/// A struct to represent an Partial Order Alignment.
+/// To see the examples, please see `./tests.ts`.
 #[derive(Clone, Default)]
 pub struct PartialOrderAlignment {
     nodes: Vec<Base>,
@@ -63,35 +73,53 @@ pub struct PartialOrderAlignment {
 type TraceBack = Vec<EditOp>;
 
 impl PartialOrderAlignment {
+    /// Return the nodes of the graph.
+    /// Note that there's no way to modify each node directly.
     pub fn nodes(&self) -> &[Base] {
         &self.nodes
     }
+    /// Return the number of the nodes. Same as `self.nodes().len()`.
     pub fn num_nodes(&self) -> usize {
         self.nodes.len()
     }
+    /// Return the number of edges.
     pub fn num_edges(&self) -> usize {
-        self.nodes.iter().map(|n| n.edges.len()).sum::<usize>()
+        self.edges().iter().map(|eds| eds.len()).sum::<usize>()
     }
+    /// Return the weight of the graph.
+    /// Usually, it returns the number of sequences added to the graph.
     pub fn weight(&self) -> f64 {
         self.weight
     }
-    pub fn view(&self, seq: &[u8], traceback: &[EditOp]) -> (String, String) {
+    /// View alignment.
+    /// # Example
+    /// ```
+    /// use poa_hmm::POA;
+    /// let query = b"CAGTGTACGTCA";
+    /// let poa = POA::default().add_default(query, 1.);
+    /// let (_,aln) = poa.align(query, (-1,-1,|x,y|if x == y { 1 } else { -1 }));
+    /// let (qry ,rfr) = poa.view(query, &aln);
+    /// let qry = String::from_utf8_lossy(&qry);
+    /// let rfr = String::from_utf8_lossy(&rfr);
+    /// eprintln!("{}\t{}", qry, rfr);
+    /// ```
+    pub fn view(&self, seq: &[u8], traceback: &[EditOp]) -> (Vec<u8>, Vec<u8>) {
         let mut q_pos = 0;
-        let (mut q, mut g) = (String::new(), String::new());
+        let (mut q, mut g) = (vec![], vec![]);
         for &op in traceback {
             match op {
                 EditOp::Deletion(g_pos) => {
-                    q.push('-');
-                    g.push(self.nodes()[g_pos].base() as char);
+                    q.push(b'-');
+                    g.push(self.nodes()[g_pos].base());
                 }
-                EditOp::Insertion(_) => {
-                    g.push('-');
-                    q.push(seq[q_pos] as char);
+                EditOp::Insertion => {
+                    g.push(b'-');
+                    q.push(seq[q_pos]);
                     q_pos += 1;
                 }
                 EditOp::Match(g_pos) => {
-                    g.push(self.nodes()[g_pos].base() as char);
-                    q.push(seq[q_pos] as char);
+                    g.push(self.nodes()[g_pos].base());
+                    q.push(seq[q_pos]);
                     q_pos += 1;
                 }
                 EditOp::Stop => {}
@@ -99,40 +127,138 @@ impl PartialOrderAlignment {
         }
         (q, g)
     }
-    pub fn generate_by(seqs: &[&[u8]], ws: &[f64], c: &Config) -> POA {
-        let ins = (c.p_ins.ln() * 3.).floor() as i32;
-        let del = (c.p_del.ln() * 3.).floor() as i32;
-        let mat = (-10. * c.p_match.ln() * 3.).floor() as i32;
-        let mism = (c.mismatch.ln() * 3.).floor() as i32;
-        let score = |x, y| if x == y { mat } else { mism };
-        Self::default().update_auto(seqs, ws, (ins, del, &score))
-    }
+    /// Construct a POA graph from a given slice of vectors. Note that
+    /// `ws` and `seqs` should have the same length.
     pub fn from_vec<F>(seqs: &[Vec<u8>], ws: &[f64], parameters: (i32, i32, &F)) -> POA
     where
         F: Fn(u8, u8) -> i32,
     {
         let seqs: Vec<_> = seqs.iter().map(|e| e.as_slice()).collect();
-        Self::generate(&seqs, ws, parameters)
+        Self::from_slice(&seqs, ws, parameters)
     }
-    pub fn generate<F>(seqs: &[&[u8]], ws: &[f64], parameters: (i32, i32, &F)) -> POA
+    /// Construct a POA graph from a given slice of slices.
+    /// Note that `seqs` and `ws` should have the same length.
+    pub fn from_slice<F>(seqs: &[&[u8]], ws: &[f64], parameters: (i32, i32, &F)) -> POA
     where
         F: Fn(u8, u8) -> i32,
     {
-        let seed = 99_999_111 * ((ws.iter().sum::<f64>().floor()) as u64);
-        Self::default().update(seqs, ws, parameters, seed)
+        assert_eq!(seqs.len(), ws.len());
+        Self::default().update(seqs, ws, parameters)
     }
-    pub fn update_auto<F>(self, seqs: &[&[u8]], ws: &[f64], params: (i32, i32, &F)) -> POA
+    /// Construct a POA graph from a given slice of slices.
+    /// In this function, the alignment would be computed in a 'banded'-manner.
+    /// The diameter is `d` and the computational time is approximately O(Lnd),
+    /// where L is the maximum length of seqs and n is the number of sequences.
+    /// The weight of each sequences are fixed to 1.
+    pub fn from_slice_banded<F>(seqs: &[&[u8]], ps: (i32, i32, &F), d: usize) -> POA
     where
         F: Fn(u8, u8) -> i32,
     {
-        let seed = 99_999_111 * ((ws.iter().sum::<f64>().floor()) as u64);
-        self.update(seqs, ws, params, seed)
+        // Determine a seed.
+        let seed = seqs
+            .iter()
+            .enumerate()
+            .map(|(idx, s)| s.iter().map(|&x| x as u64).sum::<u64>() * idx as u64)
+            .map(|x: u64| x % 179132109)
+            .sum::<u64>();
+        let mut rng: Xoshiro256StarStar = SeedableRng::seed_from_u64(seed);
+        if seqs.is_empty() {
+            return Self::default();
+        }
+        let max_len = seqs.iter().map(|s| s.len()).max().unwrap_or(0);
+        let node_num_thr = (max_len as f64 * 1.05).floor() as usize;
+        rand::seq::index::sample(&mut rng, seqs.len(), seqs.len())
+            .into_iter()
+            .map(|idx| &seqs[idx])
+            .fold(Self::default(), |x, y| {
+                if x.nodes.len() > node_num_thr {
+                    x.add_banded(y, ps, d).remove_node(0.3)
+                } else {
+                    x.add_banded(y, ps, d)
+                }
+            })
+            .remove_node(0.3)
+            .finalize()
     }
-    pub fn update<F>(self, seqs: &[&[u8]], ws: &[f64], params: (i32, i32, &F), s: u64) -> POA
+    /// Construct a POA graph from a given slice of slices.
+    /// Panics if `seqs.len() != ws.len()`.
+    /// Note that it doew not remove any nodes after alignment,
+    /// thus potentially it is very slow.
+    pub fn from_slice_no_trim<F>(seqs: &[&[u8]], ws: &[f64], param: (i32, i32, &F)) -> POA
     where
         F: Fn(u8, u8) -> i32,
     {
-        let mut rng: Xoshiro256StarStar = SeedableRng::seed_from_u64(s);
+        use rand::seq::SliceRandom;
+        let seed = 99_111 * ((ws.iter().sum::<f64>().floor()) as u64);
+        let mut rng: Xoshiro256StarStar = SeedableRng::seed_from_u64(seed);
+        seqs.choose_multiple(&mut rng, seqs.len())
+            .fold(POA::default(), |x, y| x.add(y, 1., param))
+            .finalize()
+    }
+    /// Construct a POA graph from a given slice of slices,
+    /// with default parameters and uniformal weights.
+    pub fn from_slice_default(seqs: &[&[u8]]) -> POA {
+        let ws = vec![1.; seqs.len()];
+        fn score(x: u8, y: u8) -> i32 {
+            if x == y {
+                1
+            } else {
+                -1
+            }
+        };
+        POA::from_slice(seqs, &ws, (-1, -1, &score))
+    }
+    /// Construct a POA graph from a given slice of vectors,
+    /// with default parameters and uniformal weights.
+    pub fn from_vec_default(seqs: &[Vec<u8>]) -> POA {
+        let ws = vec![1.; seqs.len()];
+        fn score(x: u8, y: u8) -> i32 {
+            if x == y {
+                1
+            } else {
+                -1
+            }
+        };
+        let seqs: Vec<_> = seqs.iter().map(|e| e.as_slice()).collect();
+        POA::from_slice(&seqs, &ws, (-1, -1, &score))
+    }
+    /// Update `self` by aligning all `seqs`.
+    /// Panics if `seqs.len() != ws.len()`.
+    /// Note that it automatically "prunes" the graph.
+    /// In other words, if the number of the nodes becames too many,
+    /// it removes weak nodes and edges sufficiently.
+    /// If you do not want to this behavior, use `update_thr` instead.
+    pub fn update<F>(self, seqs: &[&[u8]], ws: &[f64], params: (i32, i32, &F)) -> POA
+    where
+        F: Fn(u8, u8) -> i32,
+    {
+        self.update_thr(seqs, ws, params, THR, 1.5)
+    }
+    /// Update `self` by aligning all `seqs`.
+    /// Panics if `seqs.len() != ws.len()` or `thr > 1.0` or `coef < 1.0`
+    /// Note that it automatically "prunes" the graph.
+    /// In other words, if the number of the nodes becames more than `coef*max`,
+    /// where max is the maximum length of seqs,
+    /// it removes weak nodes and edges sufficiently.
+    /// The `thr` parameters tunes how hard we prune edges and nodes.
+    /// If you want to prune edges very hard, please set coef = 0.9.
+    pub fn update_thr<F: Fn(u8, u8) -> i32>(
+        self,
+        seqs: &[&[u8]],
+        ws: &[f64],
+        params: (i32, i32, &F),
+        thr: f64,
+        coef: f64,
+    ) -> POA {
+        // Determine a seed.
+        let seed = ws
+            .iter()
+            .enumerate()
+            .map(|(idx, w)| idx as f64 * w)
+            .sum::<f64>()
+            .floor() as u64
+            % 1291021111;
+        let mut rng: Xoshiro256StarStar = SeedableRng::seed_from_u64(seed);
         if seqs.is_empty() || ws.iter().all(|&w| w <= 0.001) {
             return self;
         }
@@ -143,29 +269,22 @@ impl PartialOrderAlignment {
             .map(|(s, _)| s.len())
             .max()
             .unwrap_or(0);
+        let node_num_thr = (max_len as f64 * coef).floor() as usize;
         rand::seq::index::sample(&mut rng, seqs.len(), seqs.len())
             .into_iter()
             .map(|idx| (&seqs[idx], ws[idx]))
             .filter(|&(_, w)| w > 0.001)
             .fold(self, |x, (y, w)| {
-                if x.nodes.len() > 3 * max_len / 2 {
-                    x.add(y, w, params).remove_node(THR)
+                if x.nodes.len() > node_num_thr {
+                    x.add(y, w, params).remove_node(thr)
                 } else {
                     x.add(y, w, params)
                 }
             })
-            .remove_node(THR)
+            .remove_node(thr)
             .finalize()
     }
-    pub fn generate_uniform(seqs: &[&[u8]]) -> POA {
-        let ws = vec![1.; seqs.len()];
-        POA::generate_by(seqs, &ws, &DEFAULT_CONFIG)
-    }
-    pub fn generate_vec(seqs: &[Vec<u8>]) -> POA {
-        let ws = vec![1.; seqs.len()];
-        let seqs: Vec<_> = seqs.iter().map(|e| e.as_slice()).collect();
-        POA::generate_by(&seqs, &ws, &DEFAULT_CONFIG)
-    }
+    /// Construct a new POA graph from a given `seq` with `w` weight.
     pub fn new(seq: &[u8], w: f64) -> Self {
         let weight = w;
         let mut nodes: Vec<_> = seq
@@ -195,22 +314,220 @@ impl PartialOrderAlignment {
             mapping,
         }
     }
-    pub fn align<F>(&self, seq: &[u8], param: (i32, i32, F)) -> (i32, TraceBack)
-    where
-        F: Fn(u8, u8) -> i32,
-    {
-        let (mut dp, mut profile) = (vec![], vec![]);
-        self.align_with_buf(seq, param, (&mut dp, &mut profile))
-    }
-    pub fn align_with_buf<F>(
+    /// Align `seq` to `self` with `ins del score` parameters and `d` diameters.
+    /// Note that the alignment is "semi" global.
+    /// In other words, there can be unaligned trainling/leading nodes in the POA graph.
+    pub fn align_banded<F>(
         &self,
         seq: &[u8],
         (ins, del, score): (i32, i32, F),
-        (dp, profile): (&mut Vec<i32>, &mut Vec<i32>),
+        d: usize,
     ) -> (i32, TraceBack)
+    where
+        F: Fn(u8, u8) -> i32 + Clone,
+    {
+        if seq.len() <= d {
+            return self.align(seq, (ins, del, score));
+        }
+        let edges: Vec<Vec<_>> = {
+            let mut edges = self.reverse_edges();
+            edges.iter_mut().for_each(|eds| {
+                if !eds.is_empty() {
+                    eds.iter_mut().for_each(|p| *p += 1);
+                } else {
+                    eds.push(0);
+                }
+            });
+            edges
+        };
+        // Initialize large DP table. It requires O(mn) actually.
+        // -----> query position ---->
+        // 0 8 8 8 88 8 8 8 88
+        // 0
+        // 0
+        // |
+        // |
+        // Graph position
+        // |
+        // v
+        let (column, row) = (seq.len() + 1, self.nodes.len() + 1);
+        let small = -100_000;
+        let mut dp = vec![small; column * row];
+        for (j, elm) in dp.iter_mut().enumerate().take(column) {
+            *elm = ins * j as i32;
+        }
+        for i in 0..row {
+            dp[i * column] = 0;
+        }
+        // Filling DP matrix in full.
+        let probe = d / 2;
+        for q in 0..probe {
+            for g in 0..row - 1 {
+                let pos = (g + 1) * column + (q + 1);
+                let mut max = dp[pos - 1] + ins;
+                for &prev in edges[g].iter() {
+                    let prev_pos = prev * column + (q + 1);
+                    let deletion = dp[prev_pos] + del;
+                    let mat_s = score(seq[q], self.nodes[g].base());
+                    let mat_s = dp[prev_pos - 1] + mat_s;
+                    max = max.max(deletion).max(mat_s);
+                }
+                dp[pos] = max;
+            }
+        }
+        // Determine the starting point.
+        let starting_node = {
+            let mut q_pos = probe;
+            let (mut g_pos, _) = (0..row - 1)
+                .map(|r| (r + 1, dp[(r + 1) * column + probe]))
+                .max_by(|a, b| match (a.1).cmp(&b.1) {
+                    std::cmp::Ordering::Equal => (b.0).cmp(&a.0),
+                    x => x,
+                })
+                .unwrap();
+            'outer1: while q_pos > 0 && g_pos > 0 {
+                let c_score = dp[g_pos * column + q_pos];
+                for &p in edges[g_pos - 1].iter() {
+                    let pos = p * column + q_pos;
+                    let del = dp[pos] + del;
+                    if del == c_score {
+                        g_pos = p;
+                        continue 'outer1;
+                    }
+                    let mat = dp[pos - 1] + score(seq[q_pos - 1], self.nodes[g_pos - 1].base());
+                    if mat == c_score {
+                        g_pos = p;
+                        q_pos -= 1;
+                        continue 'outer1;
+                    }
+                }
+                // Insertion
+                let ins = dp[g_pos * column + q_pos - 1] + ins;
+                if ins == c_score {
+                    q_pos -= 1;
+                    continue 'outer1;
+                }
+                panic!("error. none of choices match the current trace table.");
+            }
+            g_pos
+        };
+        // Filling  DP matrix sparsely.
+        let starting_node = starting_node.max(probe) - probe;
+        let filled_cells = self.determine_cells(starting_node, probe, d, seq.len());
+        for (g, q) in filled_cells {
+            let pos = (g + 1) * column + (q + 1);
+            let mut max = dp[pos - 1] + ins;
+            for &prev in edges[g].iter() {
+                let prev_pos = prev * column + (q + 1);
+                let deletion = dp[prev_pos] + del;
+                let mat_s = score(seq[q], self.nodes[g].base());
+                let mat_s = dp[prev_pos - 1] + mat_s;
+                max = max.max(deletion).max(mat_s);
+            }
+            dp[pos] = max;
+        }
+        // Traceback.
+        let mut q_pos = seq.len();
+        let (mut g_pos, opt_score) = (0..row)
+            .map(|r| dp[r * column + column - 1])
+            .enumerate()
+            .max_by(|(a_i, a), (b_i, b)| match a.cmp(&b) {
+                std::cmp::Ordering::Equal => a_i.cmp(&b_i),
+                x => x,
+            })
+            .unwrap_or_else(|| panic!("{}", line!()));
+        assert_eq!(dp[g_pos * column + q_pos], opt_score);
+        let mut operations = vec![];
+        'outer: while q_pos > 0 && g_pos > 0 {
+            // Current score
+            let c_score = dp[g_pos * column + q_pos];
+            for &p in edges[g_pos - 1].iter() {
+                let pos = p * column + q_pos;
+                let del = dp[pos] + del;
+                if del == c_score {
+                    operations.push(EditOp::Deletion(g_pos - 1));
+                    g_pos = p;
+                    continue 'outer;
+                }
+                let mat = dp[pos - 1] + score(seq[q_pos - 1], self.nodes[g_pos - 1].base());
+                if mat == c_score {
+                    operations.push(EditOp::Match(g_pos - 1));
+                    g_pos = p;
+                    q_pos -= 1;
+                    continue 'outer;
+                }
+            }
+            // Insertion
+            let ins = dp[g_pos * column + q_pos - 1] + ins;
+            if ins == c_score {
+                q_pos -= 1;
+                operations.push(EditOp::Insertion);
+                continue 'outer;
+            }
+            panic!("error. none of choices match the current trace table.");
+        }
+        while q_pos > 0 {
+            operations.push(EditOp::Insertion);
+            q_pos -= 1;
+        }
+        operations.reverse();
+        (opt_score, operations)
+    }
+    fn determine_cells(
+        &self,
+        g_start: usize,
+        q_start: usize,
+        d: usize,
+        qlen: usize,
+    ) -> Vec<(usize, usize)> {
+        // The range of the query to be filled for the i-th node in the graph.
+        let mut filled_range = vec![(qlen, 0); self.nodes.len()];
+        let (mut start, mut end) = (0, d / 2 + 1);
+        let mut stack = vec![g_start];
+        'search: while !stack.is_empty() {
+            let node = *stack.last().unwrap();
+            filled_range[node].0 = (filled_range[node].0).min(start);
+            filled_range[node].1 = (filled_range[node].1).max(end.min(qlen));
+            for &to in self.nodes[node].edges() {
+                if start + 1 < filled_range[to].0 || filled_range[to].1 < (end + 1).min(qlen) {
+                    stack.push(to);
+                    start = if end < d { 0 } else { start + 1 };
+                    end += 1;
+                    continue 'search;
+                }
+            }
+            stack.pop().unwrap();
+            end -= 1;
+            start = start.max(1) - 1;
+        }
+        let mut poss = vec![];
+        for (g, &(s, e)) in filled_range.iter().enumerate().skip(g_start) {
+            let s = s.max(q_start);
+            for i in s..e {
+                poss.push((g, i));
+            }
+        }
+        poss
+    }
+    /// Align `seq` to `self` with `param` parameters.
+    /// Note that the alignment is "semi" global.
+    /// In other words, there can be unaligned trainling/leading nodes in the POA graph.
+    #[cfg(feature = "poa_simd")]
+    pub fn align<F>(&self, seq: &[u8], (ins, del, score): (i32, i32, F)) -> (i32, TraceBack)
     where
         F: Fn(u8, u8) -> i32,
     {
+        let edges = {
+            let mut edges = self.reverse_edges();
+            edges.iter_mut().for_each(|eds| {
+                if !eds.is_empty() {
+                    eds.iter_mut().for_each(|p| *p += 1);
+                } else {
+                    eds.push(0);
+                }
+            });
+            edges
+        };
         // -----> query position ---->
         // 0 8 8 8 88 8 8 8 88
         // 0
@@ -229,8 +546,7 @@ impl PartialOrderAlignment {
         } else {
             seq.len() + (LANE - (seq.len() % LANE)) + 1
         };
-        profile.clear();
-        dp.clear();
+        let (mut profile, mut dp) = (vec![], vec![]);
         assert!((column - 1) % LANE == 0);
         for &base in b"ACGT" {
             for i in 0..column {
@@ -241,17 +557,6 @@ impl PartialOrderAlignment {
                 }
             }
         }
-        let edges: Vec<Vec<_>> = self
-            .reverse_edges()
-            .iter()
-            .map(|edges| {
-                if !edges.is_empty() {
-                    edges.iter().map(|&p| p + 1).collect()
-                } else {
-                    vec![0]
-                }
-            })
-            .collect();
         // Initialazation.
         for _ in 0..column * row {
             dp.push(std::i32::MIN);
@@ -323,7 +628,7 @@ impl PartialOrderAlignment {
         let (mut g_pos, &score) = last_elements
             .iter()
             .enumerate()
-            .max_by(|(a_i, a), (b_i, b)| match a.partial_cmp(&b).unwrap() {
+            .max_by(|(a_i, a), (b_i, b)| match a.cmp(&b) {
                 std::cmp::Ordering::Equal => a_i.cmp(&b_i),
                 x => x,
             })
@@ -349,7 +654,7 @@ impl PartialOrderAlignment {
             let ins_w = route_weight[g_pos * column + q_pos - 1] + 1.;
             if ins == score && ((ins_w - weight) / ins_w.max(weight)).abs() < 0.000_1 {
                 q_pos -= 1;
-                operations.push(EditOp::Insertion(0));
+                operations.push(EditOp::Insertion);
                 continue 'outer;
             }
             // Match/Mismatch
@@ -367,37 +672,160 @@ impl PartialOrderAlignment {
             panic!("error. none of choices match the current trace table.");
         }
         while q_pos > 0 {
-            operations.push(EditOp::Insertion(0));
+            operations.push(EditOp::Insertion);
             q_pos -= 1;
         }
         operations.reverse();
         (score, operations)
     }
-    pub fn add_default(self, seq: &[u8], w: f64) -> Self {
-        self.add(seq, w, (-2, -2, &|x, y| if x == y { 1 } else { -1 }))
-    }
-    pub fn add<F>(self, seq: &[u8], w: f64, parameters: (i32, i32, &F)) -> Self
+    /// Align `seq` to `self` with `param` parameters.
+    /// Note that the alignment is "semi" global.
+    /// In other words, there can be unaligned trainling/leading nodes in the POA graph.
+    #[cfg(not(feature = "poa_simd"))]
+    pub fn align<F>(&self, seq: &[u8], (ins, del, score): (i32, i32, F)) -> (i32, TraceBack)
     where
         F: Fn(u8, u8) -> i32,
     {
-        let mut buf1 = vec![];
-        let mut buf2 = vec![];
-        self.add_with_buf(seq, w, parameters, (&mut buf1, &mut buf2))
+        let edges = {
+            let mut edges = self.reverse_edges();
+            edges.iter_mut().for_each(|eds| {
+                if !eds.is_empty() {
+                    eds.iter_mut().for_each(|p| *p += 1);
+                } else {
+                    eds.push(0);
+                }
+            });
+            edges
+        };
+
+        // -----> query position ---->
+        // 0 8 8 8 88 8 8 8 88
+        // 0
+        // 0
+        // |
+        // |
+        // Graph position
+        // |
+        // v
+        let row = self.nodes.len() + 1;
+        let column = seq.len() + 1;
+        // Initialazation.
+        let mut dp = vec![0; column * row];
+        // Weight to break tie. [i*column + j] is the total weight to (i,j) element.
+        let mut route_weight = vec![0.; column * row];
+        for j in 0..column {
+            dp[j] = ins * j as i32;
+            route_weight[j] = j as f64;
+        }
+        for q in 1..column {
+            for r in 1..row {
+                // Updating position.
+                let pos = r * column + q;
+                let mut max = dp[pos - 1] + ins;
+                let mut max_weight = route_weight[pos - 1] + 1.;
+                let mat_score = score(seq[q - 1], self.nodes[r - 1].base());
+                for &p in &edges[r - 1] {
+                    let prev = p * column + q;
+                    let del_score = dp[prev] + del;
+                    let del_weight = route_weight[prev];
+                    if del_score > max {
+                        max = del_score;
+                        max_weight = del_weight;
+                    }
+                    // Update for match state.
+                    let mat_score = mat_score + dp[prev - 1];
+                    let mat_weight = self.nodes[r - 1].weight() + route_weight[prev - 1];
+                    if mat_score > max {
+                        max = mat_score;
+                        max_weight = mat_weight;
+                    }
+                }
+                dp[pos] = max;
+                route_weight[pos] = max_weight;
+            }
+        }
+        // Traceback.
+        let mut q_pos = seq.len();
+        let (mut g_pos, max_score) = (0..row)
+            .map(|g| (g, dp[column * g + column - 1]))
+            .max_by(|(a_i, a), (b_i, b)| match a.cmp(&b) {
+                std::cmp::Ordering::Equal => a_i.cmp(&b_i),
+                x => x,
+            })
+            .unwrap_or_else(|| panic!("{}", line!()));
+        assert_eq!(dp[g_pos * column + q_pos], max_score);
+        let mut operations = vec![];
+        'outer: while q_pos > 0 && g_pos > 0 {
+            let w = self.nodes[g_pos - 1].weight() as f32;
+            let c_score = dp[g_pos * column + q_pos];
+            let weight = route_weight[g_pos * column + q_pos];
+            // Deletion.
+            for &p in &edges[g_pos - 1] {
+                let pos = p * column + q_pos;
+                let (del, del_w) = (dp[pos] + del, route_weight[pos]);
+                if del == c_score && ((del_w - weight) / del_w.max(weight)).abs() < 0.000_1 {
+                    operations.push(EditOp::Deletion(g_pos - 1));
+                    g_pos = p;
+                    continue 'outer;
+                }
+            }
+            // Insertion
+            let ins = dp[g_pos * column + q_pos - 1] + ins;
+            let ins_w = route_weight[g_pos * column + q_pos - 1] + 1.;
+            if ins == c_score && ((ins_w - weight) / ins_w.max(weight)).abs() < 0.000_1 {
+                q_pos -= 1;
+                operations.push(EditOp::Insertion);
+                continue 'outer;
+            }
+            // Match/Mismatch
+            for &p in &edges[g_pos - 1] {
+                let mat = score(seq[q_pos - 1], self.nodes[g_pos - 1].base())
+                    + dp[p * column + q_pos - 1];
+                let mat_w = route_weight[p * column + q_pos - 1] + w as f64;
+                if mat == c_score && ((mat_w - weight) / mat_w.max(weight)).abs() < 0.000_1 {
+                    operations.push(EditOp::Match(g_pos - 1));
+                    g_pos = p;
+                    q_pos -= 1;
+                    continue 'outer;
+                }
+            }
+            panic!("error. none of choices match the current trace table.");
+        }
+        while q_pos > 0 {
+            operations.push(EditOp::Insertion);
+            q_pos -= 1;
+        }
+        operations.reverse();
+        (max_score, operations)
     }
-    pub fn add_with_buf<F>(
-        self,
-        seq: &[u8],
-        w: f64,
-        ps: (i32, i32, &F),
-        buffers: (&mut Vec<i32>, &mut Vec<i32>),
-    ) -> Self
+    /// Integrate a single sequence to `self` with default parameter and `d` diameter.
+    pub fn add_default_banded(self, seq: &[u8], d: usize) -> Self {
+        self.add_banded(seq, (-2, -2, &|x, y| if x == y { 1 } else { -1 }), d)
+    }
+    /// Integrate a single sequence with default parameter.
+    pub fn add_default(self, seq: &[u8], w: f64) -> Self {
+        self.add(seq, w, (-2, -2, &|x, y| if x == y { 1 } else { -1 }))
+    }
+    /// Integrate a single sequence with the given parameter and diameter.
+    pub fn add_banded<F>(self, seq: &[u8], ps: (i32, i32, &F), d: usize) -> Self
+    where
+        F: Fn(u8, u8) -> i32,
+    {
+        if self.weight < SMALL || self.nodes.is_empty() {
+            return Self::new(seq, 1.);
+        }
+        let (_, traceback) = self.align_banded(seq, ps, d);
+        self.integrate_alignment(seq, 1., traceback)
+    }
+    /// Integrate a signle seqnece with `w` weight with the given parameter.
+    pub fn add<F>(self, seq: &[u8], w: f64, parameters: (i32, i32, &F)) -> Self
     where
         F: Fn(u8, u8) -> i32,
     {
         if self.weight < SMALL || self.nodes.is_empty() {
             return Self::new(seq, w);
         }
-        let (_, traceback) = self.align_with_buf(seq, ps, buffers);
+        let (_, traceback) = self.align(seq, parameters);
         self.integrate_alignment(seq, w, traceback)
     }
     fn integrate_alignment(mut self, seq: &[u8], w: f64, traceback: TraceBack) -> Self {
@@ -431,7 +859,7 @@ impl PartialOrderAlignment {
                     previous = Some(position);
                     q_pos += 1;
                 }
-                EditOp::Insertion(_) => {
+                EditOp::Insertion => {
                     let base = seq[q_pos];
                     let mut new_node = Base::new(base);
                     new_node.add_weight(w);
@@ -458,6 +886,14 @@ impl PartialOrderAlignment {
         // assert!(self.nodes.iter().all(|node| node.weight() > 0.));
         self.topological_sort()
     }
+    /// Return the edges.
+    /// Note that there are two kind of edges. One is usual edges, i.e., the edges link consective bases. The other is "tie"-edge, which ties two different bases that have the same child node. In other words, if there is a mis-match like
+    /// AACATT
+    /// ||XX||
+    /// AAGTTT,
+    /// the C and G would be tied by a "tie"-edge.
+    /// This "tie"-edge is necessary, as I want to align AACT to the resulting graph with NO MISMATCH.
+    /// Of course, this choice is arbitrary, and it may be changed in the future.
     pub fn edges(&self) -> Vec<Vec<usize>> {
         let mut edges = vec![vec![]; self.nodes.len()];
         for (from, n) in self.nodes.iter().enumerate() {
@@ -474,6 +910,8 @@ impl PartialOrderAlignment {
         }
         edges
     }
+    /// Return the edges to the reverse directions.
+    /// It is useful when you want to back-tracing from some node in the graph.
     pub fn reverse_edges(&self) -> Vec<Vec<usize>> {
         let mut edges = vec![vec![]; self.nodes.len()];
         for (from, n) in self.nodes.iter().enumerate() {
