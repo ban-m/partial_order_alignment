@@ -5,6 +5,27 @@ pub struct Profile {
     pub del: f64,
     pub ins: f64,
 }
+impl Profile {
+    pub fn sum(&self) -> f64 {
+        self.sub + self.del + self.ins
+    }
+    pub fn norm(&self) -> Self {
+        let sum = self.sum();
+        Self {
+            sub: self.sub / sum,
+            del: self.del / sum,
+            ins: self.ins / sum,
+        }
+    }
+    pub fn mul(&self, x: f64) -> Self {
+        Self {
+            sub: self.sub * x,
+            ins: self.ins * x,
+            del: self.del * x,
+        }
+    }
+}
+
 pub const PROFILE: Profile = Profile {
     sub: 0.04,
     del: 0.04,
