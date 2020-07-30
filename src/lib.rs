@@ -361,14 +361,14 @@ impl PartialOrderAlignment {
         }
         // Filling DP matrix in full.
         let probe = d / 2;
-        for q in 0..probe {
-            for g in 0..row - 1 {
+        for (q, &q_base) in seq.iter().enumerate().take(probe) {
+            for (g, g_edges) in edges.iter().enumerate().take(row - 1) {
                 let pos = (g + 1) * column + (q + 1);
                 let mut max = dp[pos - 1] + ins;
-                for &prev in edges[g].iter() {
+                for &prev in g_edges.iter() {
                     let prev_pos = prev * column + (q + 1);
                     let deletion = dp[prev_pos] + del;
-                    let mat_s = score(seq[q], self.nodes[g].base());
+                    let mat_s = score(q_base, self.nodes[g].base());
                     let mat_s = dp[prev_pos - 1] + mat_s;
                     max = max.max(deletion).max(mat_s);
                 }

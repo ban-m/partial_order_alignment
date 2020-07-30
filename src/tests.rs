@@ -586,10 +586,10 @@ use rand::Rng;
 #[test]
 fn single_error_test() {
     let bases = b"ACTG";
-    let coverage = 150;
+    let coverage = 80;
     let start = 20;
-    let step = 3;
-    let len = 150;
+    let step = 2;
+    let len = 100;
     let results: Vec<_> = (start..coverage)
         .step_by(step)
         .map(|cov| {
@@ -666,10 +666,10 @@ fn check<R: rand::Rng>(t1: &[u8], t2: &[u8], rng: &mut R, cov: usize) -> usize {
 #[test]
 fn single_error_ccs_test() {
     let bases = b"ACTG";
-    let coverage = 150;
+    let coverage = 80;
     let start = 20;
-    let step = 3;
-    let len = 150;
+    let step = 2;
+    let len = 100;
     let results: Vec<_> = (start..coverage)
         .step_by(step)
         .map(|cov| {
@@ -832,10 +832,10 @@ fn high_coverage_test() {
 #[test]
 fn single_error_banded_test() {
     let bases = b"ACTG";
-    let coverage = 150;
+    let coverage = 80;
     let start = 20;
-    let step = 3;
-    let len = 150;
+    let step = 2;
+    let len = 100;
     let results: Vec<_> = (start..coverage)
         .step_by(step)
         .map(|cov| {
