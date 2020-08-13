@@ -142,7 +142,7 @@ impl PartialOrderAlignment {
     where
         F: Fn(u8, u8) -> i32,
     {
-        assert_eq!(seqs.len(), ws.len());
+        // assert_eq!(seqs.len(), ws.len());
         Self::default().update(seqs, ws, parameters)
     }
     /// Construct a POA graph from a given slice of slices.
@@ -171,11 +171,12 @@ impl PartialOrderAlignment {
             .into_iter()
             .map(|idx| &seqs[idx])
             .fold(Self::default(), |x, y| {
-                if x.nodes.len() > node_num_thr {
+                let res = if x.nodes.len() > node_num_thr {
                     x.add_banded(y, ps, d).remove_node(0.3)
                 } else {
                     x.add_banded(y, ps, d)
-                }
+                };
+                res
             })
             .remove_node(0.3)
             .finalize()
@@ -251,14 +252,6 @@ impl PartialOrderAlignment {
         coef: f64,
     ) -> POA {
         // Determine a seed.
-        let seed = ws
-            .iter()
-            .enumerate()
-            .map(|(idx, w)| idx as f64 * w)
-            .sum::<f64>()
-            .floor() as u64
-            % 1291021111;
-        let mut rng: Xoshiro256StarStar = SeedableRng::seed_from_u64(seed);
         if seqs.is_empty() || ws.iter().all(|&w| w <= 0.001) {
             return self;
         }
@@ -270,11 +263,10 @@ impl PartialOrderAlignment {
             .max()
             .unwrap_or(0);
         let node_num_thr = (max_len as f64 * coef).floor() as usize;
-        rand::seq::index::sample(&mut rng, seqs.len(), seqs.len())
-            .into_iter()
-            .map(|idx| (&seqs[idx], ws[idx]))
-            .filter(|&(_, w)| w > 0.001)
-            .fold(self, |x, (y, w)| {
+        seqs.iter()
+            .zip(ws)
+            .filter(|&(_, &w)| w > 0.001)
+            .fold(self, |x, (y, &w)| {
                 if x.nodes.len() > node_num_thr {
                     x.add(y, w, params).remove_node(thr)
                 } else {

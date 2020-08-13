@@ -111,6 +111,23 @@ fn align_150(b: &mut Bencher) {
             .align(&model1[0], (-1, -1, &|x, y| if x == y { 1 } else { -1 }))
     });
 }
+#[bench]
+fn align_150_banded(b: &mut Bencher) {
+    let bases = b"ACTG";
+    let mut rng: Xoshiro256StarStar = SeedableRng::seed_from_u64(1212132);
+    let template: Vec<_> = (0..150)
+        .filter_map(|_| bases.choose(&mut rng))
+        .copied()
+        .collect();
+    let model1: Vec<Vec<_>> = (0..50)
+        .map(|_| introduce_randomness(&template, &mut rng, &PROFILE))
+        .collect();
+    let model = POA::from_vec_default(&model1);
+    b.iter(|| {
+        let ps = (-1, -1, &|x, y| if x == y { 1 } else { -1 });
+        model.clone().align_banded(&model1[0], ps, 50)
+    });
+}
 
 #[bench]
 fn align_150_ccs(b: &mut Bencher) {
@@ -170,17 +187,33 @@ fn add_150(b: &mut Bencher) {
 }
 
 #[bench]
-fn create_150(b: &mut Bencher) {
+fn create_100(b: &mut Bencher) {
     let bases = b"ACTG";
     let mut rng: Xoshiro256StarStar = SeedableRng::seed_from_u64(1212132);
-    let template: Vec<_> = (0..150)
+    let template: Vec<_> = (0..100)
         .filter_map(|_| bases.choose(&mut rng))
         .copied()
         .collect();
-    let model1: Vec<Vec<_>> = (0..50)
+    let model1: Vec<Vec<_>> = (0..30)
         .map(|_| introduce_randomness(&template, &mut rng, &PROFILE))
         .collect();
     b.iter(|| POA::from_vec_default(&model1));
+}
+
+#[bench]
+fn create_100_banded(b: &mut Bencher) {
+    let bases = b"ACTG";
+    let mut rng: Xoshiro256StarStar = SeedableRng::seed_from_u64(1212132);
+    let template: Vec<_> = (0..100)
+        .filter_map(|_| bases.choose(&mut rng))
+        .copied()
+        .collect();
+    let model1: Vec<Vec<_>> = (0..30)
+        .map(|_| introduce_randomness(&template, &mut rng, &PROFILE))
+        .collect();
+    let model1: Vec<_> = model1.iter().map(|e| e.as_slice()).collect();
+    let param = (-1, -1, &|x, y| if x == y { 1 } else { -1 });
+    b.iter(|| POA::from_slice_banded(&model1, param, 25));
 }
 
 #[bench]
@@ -198,4 +231,40 @@ fn forward_150(b: &mut Bencher) {
     let model = POA::from_vec_default(&model1);
     eprintln!("{}", model);
     b.iter(|| model.forward(&query, &DEFAULT_CONFIG));
+}
+
+#[bench]
+fn align_100(b: &mut Bencher) {
+    let bases = b"ACTG";
+    let mut rng: Xoshiro256StarStar = SeedableRng::seed_from_u64(1212132);
+    let template: Vec<_> = (0..100)
+        .filter_map(|_| bases.choose(&mut rng))
+        .copied()
+        .collect();
+    let model1: Vec<Vec<_>> = (0..4)
+        .map(|_| introduce_randomness(&template, &mut rng, &PROFILE))
+        .collect();
+    let model = POA::from_vec_default(&model1);
+    b.iter(|| {
+        model
+            .clone()
+            .align(&model1[0], (-1, -1, &|x, y| if x == y { 1 } else { -1 }))
+    });
+}
+#[bench]
+fn align_100_banded(b: &mut Bencher) {
+    let bases = b"ACTG";
+    let mut rng: Xoshiro256StarStar = SeedableRng::seed_from_u64(1212132);
+    let template: Vec<_> = (0..100)
+        .filter_map(|_| bases.choose(&mut rng))
+        .copied()
+        .collect();
+    let model1: Vec<Vec<_>> = (0..4)
+        .map(|_| introduce_randomness(&template, &mut rng, &PROFILE))
+        .collect();
+    let model = POA::from_vec_default(&model1);
+    b.iter(|| {
+        let ps = (-1, -1, &|x, y| if x == y { 1 } else { -1 });
+        model.clone().align_banded(&model1[0], ps, 50)
+    });
 }
