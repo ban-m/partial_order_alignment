@@ -241,8 +241,8 @@ impl PartialOrderAlignment {
     /// In other words, if the number of the nodes becames more than `coef*max`,
     /// where max is the maximum length of seqs,
     /// it removes weak nodes and edges sufficiently.
-    /// The `thr` parameters tunes how hard we prune edges and nodes.
-    /// If you want to prune edges very hard, please set coef = 0.9.
+    /// The `thr` parameters tunes how hard we prune edges and nodes (the bigger `thr`, the harder).
+    /// If you want to prune edges very hard, please set coef = 1.1.
     pub fn update_thr<F: Fn(u8, u8) -> i32>(
         self,
         seqs: &[&[u8]],
@@ -538,7 +538,11 @@ impl PartialOrderAlignment {
         } else {
             seq.len() + (LANE - (seq.len() % LANE)) + 1
         };
-        let (mut profile, mut dp) = (vec![], vec![]);
+        //         for _ in 0..column * row {
+        //     dp.push(std::i32::MIN);
+        // }
+        let mut dp = vec![std::i32::MIN; column * row];
+        let mut profile = vec![];
         assert!((column - 1) % LANE == 0);
         for &base in b"ACGT" {
             for i in 0..column {
@@ -550,9 +554,6 @@ impl PartialOrderAlignment {
             }
         }
         // Initialazation.
-        for _ in 0..column * row {
-            dp.push(std::i32::MIN);
-        }
         // The last elements in each row. Used at the beggining of the trace-back.
         let mut last_elements = vec![std::i32::MIN];
         // Weight to break tie. [i*column + j] is the total weight to (i,j) element.
@@ -689,7 +690,6 @@ impl PartialOrderAlignment {
             });
             edges
         };
-
         // -----> query position ---->
         // 0 8 8 8 88 8 8 8 88
         // 0
@@ -702,7 +702,7 @@ impl PartialOrderAlignment {
         let row = self.nodes.len() + 1;
         let column = seq.len() + 1;
         // Initialazation.
-        let mut dp = vec![0; column * row];
+        let mut dp = vec![std::i32::MIN; column * row];
         // Weight to break tie. [i*column + j] is the total weight to (i,j) element.
         let mut route_weight = vec![0.; column * row];
         for j in 0..column {
@@ -875,7 +875,6 @@ impl PartialOrderAlignment {
         }
         assert_eq!(q_pos, seq.len());
         self.weight += w;
-        // assert!(self.nodes.iter().all(|node| node.weight() > 0.));
         self.topological_sort()
     }
     /// Return the edges.
@@ -920,7 +919,10 @@ impl PartialOrderAlignment {
         }
         edges
     }
-    fn finalize(mut self) -> Self {
+    /// Finalize model so that it can be regarded as a probabilistic model.
+    /// TODO: Maybe we should force users to invoke this function by
+    /// using factory pattern or something similar.
+    pub fn finalize(mut self) -> Self {
         let bases: Vec<_> = self.nodes.iter().map(|e| e.base).collect();
         self.nodes.iter_mut().for_each(|e| e.finalize(&bases));
         self

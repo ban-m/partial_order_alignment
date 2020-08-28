@@ -11,15 +11,25 @@ impl PartialOrderAlignment {
             .max_by(|a, b| a.head_weight().partial_cmp(&b.head_weight()).unwrap())
             .unwrap_or_else(|| &self.nodes[0]);
         let mut res = vec![node.base()];
+        let end_nodes = self
+            .nodes
+            .iter()
+            .enumerate()
+            .filter(|e| e.1.is_tail)
+            .max_by(|a, b| (a.1).tail_weight.partial_cmp(&(b.1).tail_weight).unwrap())
+            .map(|x| x.0);
         while node.has_edge() {
-            let (idx, _) = node
+            let (&idx, _) = node
                 .edges()
                 .iter()
                 .zip(node.weights.iter())
                 .max_by(|a, b| (a.1).partial_cmp(&(b.1)).unwrap())
                 .unwrap_or_else(|| panic!("{}", line!()));
-            node = &self.nodes[*idx];
+            node = &self.nodes[idx];
             res.push(node.base());
+            if Some(idx) == end_nodes {
+                break;
+            }
         }
         res
     }

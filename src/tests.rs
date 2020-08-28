@@ -252,7 +252,6 @@ mod tests {
         eprintln!("{}", lk);
         assert!(lk < 0.);
     }
-
     #[test]
     fn connectivity_check() {
         let bases = b"ACTG";
@@ -270,6 +269,7 @@ mod tests {
             assert!(is_connected(&m));
         }
     }
+
     fn is_connected(m: &POA) -> bool {
         let mut edges = vec![vec![]; m.nodes.len()];
         for (from, n) in m.nodes.iter().enumerate() {
@@ -386,7 +386,6 @@ mod tests {
         let likelihood2 = model2.forward(&template, &DEFAULT_CONFIG);
         assert!(likelihood1 > likelihood2, "{},{}", likelihood1, likelihood2);
     }
-
     #[test]
     fn random_check_forward() {
         let bases = b"ACTG";
@@ -527,10 +526,8 @@ mod tests {
         };
         let len = 150;
         let cov = 20;
-        let ratio = 5;
+        let ratio = 2;
         let errors = PROFILE;
-        let score = |x, y| if x == y { 3 } else { -4 };
-        let parameters = (-6, -6, &score);
         for _ in 0..3 {
             let template1: Vec<_> = (0..len)
                 .filter_map(|_| bases.choose(&mut rng))
@@ -547,10 +544,8 @@ mod tests {
             data2.extend((0..cov).map(|_| introduce_randomness(&template2, &mut rng, &PROFILE)));
             let data1: Vec<_> = data1.iter().map(|e| e.as_slice()).collect();
             let data2: Vec<_> = data2.iter().map(|e| e.as_slice()).collect();
-            let total = (ratio + 1) * cov;
-            let weight = vec![1.; total];
-            let model1 = POA::from_slice(&data1, &weight, parameters);
-            let model2 = POA::from_slice(&data2, &weight, parameters);
+            let model1 = POA::from_slice_default(&data1);
+            let model2 = POA::from_slice_default(&data2);
             eprintln!("{}", model1);
             eprintln!("{}", String::from_utf8_lossy(&template1));
             eprintln!("{}", String::from_utf8_lossy(&model1.consensus()));
@@ -564,22 +559,18 @@ mod tests {
                     let q = introduce_randomness(&template1, &mut rng, &errors);
                     let lk1 = model1.forward(&q, &DEFAULT_CONFIG);
                     let lk2 = model2.forward(&q, &DEFAULT_CONFIG);
-                    //eprintln!("1\t{:.3}\t{:.3}", lk1, lk2);
                     lk1 > lk2
                 })
                 .count();
-            //eprintln!("1:{}", correct);
             assert!(correct >= num * 6 / 10, "1:{}", correct);
             let correct = (0..num)
                 .filter(|_| {
                     let q = introduce_randomness(&template2, &mut rng, &errors);
                     let lk1 = model1.forward(&q, &DEFAULT_CONFIG);
                     let lk2 = model2.forward(&q, &DEFAULT_CONFIG);
-                    //eprintln!("2\t{:.3}\t{:.3}", lk1, lk2);
                     lk1 < lk2
                 })
                 .count();
-            // eprintln!("2:{}", correct);
             assert!(correct >= num * 6 / 10, "2:{}", correct);
         }
     }
