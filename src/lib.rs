@@ -920,7 +920,7 @@ impl PartialOrderAlignment {
         }
         edges
     }
-    fn finalize(mut self) -> Self {
+    pub fn finalize(mut self) -> Self {
         let bases: Vec<_> = self.nodes.iter().map(|e| e.base).collect();
         self.nodes.iter_mut().for_each(|e| e.finalize(&bases));
         self

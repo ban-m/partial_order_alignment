@@ -132,7 +132,19 @@ impl PartialOrderAlignment {
                 for (&to, &w) in n.edges.iter().zip(n.weights().iter()) {
                     edges[to].push((from, w));
                 }
-                if n.is_head {
+                // if n.is_head {
+                //     edges[from].push((self.nodes.len(), n.weight() / total));
+                // }
+            }
+            let total = self
+                .nodes
+                .iter()
+                .zip(edges.iter())
+                .filter(|(n, es)| n.is_head && es.is_empty())
+                .map(|(n, _)| n.weight())
+                .sum::<f64>();
+            for (from, n) in self.nodes.iter().enumerate() {
+                if n.is_head && edges[from].is_empty() {
                     edges[from].push((self.nodes.len(), n.weight() / total));
                 }
             }

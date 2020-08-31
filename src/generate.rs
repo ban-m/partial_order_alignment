@@ -113,7 +113,7 @@ mod tests {
     fn long_consensus_rand() {
         let bases = b"ACTG";
         let coverage = 120;
-        let start = 20;
+        let start = 40;
         let len = 100;
         let result = (start..coverage)
             .filter(|&cov| {
@@ -131,7 +131,7 @@ mod tests {
                 consensus == template1
             })
             .count();
-        assert!(result > 80, "{}", result);
+        assert!(result > 60, "{}", result);
     }
     #[test]
     fn super_long_consensus_rand() {
