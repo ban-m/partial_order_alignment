@@ -2,7 +2,7 @@
 //! Usually, it would not be used in the real-applications.
 
 use rand::seq::SliceRandom;
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct Profile {
     pub sub: f64,
     pub del: f64,
