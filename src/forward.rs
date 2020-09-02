@@ -119,12 +119,12 @@ impl PartialOrderAlignment {
             prev.extend(std::iter::repeat(0.).take(4 - prev.len() % 4));
         }
         let mut updated = vec![0.; prev.len()];
-        let total = self
-            .nodes
-            .iter()
-            .filter(|n| n.is_head)
-            .map(|n| n.weight())
-            .sum::<f64>();
+        // let total = self
+        //     .nodes
+        //     .iter()
+        //     .filter(|n| n.is_head)
+        //     .map(|n| n.weight())
+        //     .sum::<f64>();
         let base_freq = [0.25; 4];
         let edges = {
             let mut edges: Vec<Vec<_>> = vec![vec![]; self.nodes.len() + 2];
