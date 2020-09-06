@@ -171,12 +171,11 @@ impl PartialOrderAlignment {
             .into_iter()
             .map(|idx| &seqs[idx])
             .fold(Self::default(), |x, y| {
-                let res = if x.nodes.len() > node_num_thr {
+                if x.nodes.len() > node_num_thr {
                     x.add_banded(y, ps, d).remove_node(0.3)
                 } else {
                     x.add_banded(y, ps, d)
-                };
-                res
+                }
             })
             .remove_node(0.3)
             .finalize()
