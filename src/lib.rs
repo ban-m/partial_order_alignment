@@ -331,7 +331,7 @@ impl PartialOrderAlignment {
             });
             edges
         };
-        // Initialize large DP table. It requires O(mn) actually.
+        // Initialize large DP table.
         // -----> query position ---->
         // 0 8 8 8 88 8 8 8 88
         // 0
