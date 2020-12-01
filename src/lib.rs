@@ -264,7 +264,7 @@ impl PartialOrderAlignment {
         let node_num_thr = (max_len as f64 * coef).floor() as usize;
         seqs.iter()
             .zip(ws)
-            .filter(|&(_, &w)| w > 0.001)
+            .filter(|&(y, &w)| w > 0.001 && !y.is_empty())
             .fold(self, |x, (y, &w)| {
                 if x.nodes.len() > node_num_thr {
                     x.add(y, w, params).remove_node(thr)
@@ -924,4 +924,6 @@ impl PartialOrderAlignment {
         self.nodes.iter_mut().for_each(|e| e.finalize(&bases));
         self
     }
+    /// Set the maximum weight of the nodes as the given value.
+    pub fn set_max_weight(&mut self, _max_weight: f64) {}
 }
