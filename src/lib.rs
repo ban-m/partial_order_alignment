@@ -205,7 +205,7 @@ impl PartialOrderAlignment {
             } else {
                 -1
             }
-        };
+        }
         POA::from_slice(seqs, &ws, (-1, -1, &score))
     }
     /// Construct a POA graph from a given slice of vectors,
@@ -218,7 +218,7 @@ impl PartialOrderAlignment {
             } else {
                 -1
             }
-        };
+        }
         let seqs: Vec<_> = seqs.iter().map(|e| e.as_slice()).collect();
         POA::from_slice(&seqs, &ws, (-1, -1, &score))
     }

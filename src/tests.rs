@@ -323,11 +323,11 @@ mod tests {
         let mut rng: Xoshiro256StarStar = SeedableRng::seed_from_u64(1212132);
         use rand::Rng;
         for _ in 0..100 {
-            let x: Vec<_> = (0..(rng.gen_range(100, 150)))
+            let x: Vec<_> = (0..(rng.gen_range(100..150)))
                 .filter_map(|_| bases.choose(&mut rng))
                 .copied()
                 .collect();
-            let y: Vec<_> = (0..(rng.gen_range(100, 150)))
+            let y: Vec<_> = (0..(rng.gen_range(100..150)))
                 .filter_map(|_| bases.choose(&mut rng))
                 .copied()
                 .collect();
@@ -834,7 +834,7 @@ mod tests {
             .step_by(step)
             .map(|cov| {
                 let mut rng: Xoshiro256StarStar = SeedableRng::seed_from_u64(1_234_567);
-                let seed = rng.gen_range(0, 100_000);
+                let seed = rng.gen_range(0..100_000);
                 let mut rng: Xoshiro256StarStar = SeedableRng::seed_from_u64(seed);
                 let template1: Vec<_> = (0..len)
                     .filter_map(|_| bases.choose(&mut rng))
