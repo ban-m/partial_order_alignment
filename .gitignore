@@ -14,3 +14,4 @@
 **/pics
 .*
 !.gitignore
+Cargo.lock
